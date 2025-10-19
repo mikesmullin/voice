@@ -4,6 +4,7 @@ import os
 from pathlib import Path
 from typing import Optional
 import numpy as np
+import time
 
 try:
     import soundfile as sf
@@ -42,13 +43,29 @@ def play_audio(audio: np.ndarray, sample_rate: int) -> None:
     try:
         # Ensure audio is the right shape and type
         if len(audio.shape) == 1:
-            # Mono audio, reshape to (N, 1) for sounddevice
-            audio_to_play = audio.reshape(-1, 1)
+            # Mono audio - keep as 1D for sounddevice
+            audio_to_play = audio
+        elif len(audio.shape) == 2 and audio.shape[1] == 1:
+            # Convert (N, 1) to (N,) - flatten
+            audio_to_play = audio.flatten()
         else:
             audio_to_play = audio
+        
+        # Add a small silence buffer at the start to prevent cutoff
+        # This helps with audio driver latency
+        silence_duration = 0.05  # 50ms
+        silence_samples = int(sample_rate * silence_duration)
+        silence = np.zeros(silence_samples, dtype=audio_to_play.dtype)
+        audio_with_buffer = np.concatenate([silence, audio_to_play])
             
-        # Play audio and wait for completion
-        sd.play(audio_to_play, samplerate=sample_rate, device=default_device, blocking=True)
+        # Play audio with non-blocking mode first to allow driver to initialize
+        sd.play(audio_with_buffer, samplerate=sample_rate, device=default_device, blocking=False)
+        
+        # Small delay to let playback start
+        time.sleep(0.01)
+        
+        # Now wait for completion
+        sd.wait()
         print(f"[Audio] Playback complete")
     except Exception as e:
         print(f"Error playing audio: {e}")
@@ -73,8 +90,14 @@ def save_audio_wav(audio: np.ndarray, sample_rate: int, output_path: str) -> Non
     if output_dir:
         os.makedirs(output_dir, exist_ok=True)
     
+    # Add silence buffer at start to prevent cutoff when playing the file
+    silence_duration = 0.05  # 50ms
+    silence_samples = int(sample_rate * silence_duration)
+    silence = np.zeros(silence_samples, dtype=audio.dtype)
+    audio_with_buffer = np.concatenate([silence, audio])
+    
     # Save as WAV
-    sf.write(output_path, audio, sample_rate)
+    sf.write(output_path, audio_with_buffer, sample_rate)
     print(f"[Audio] Saved to: {output_path}")
 
 
