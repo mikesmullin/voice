@@ -7,7 +7,7 @@ import yaml
 
 from .text_processor import TextProcessor, create_processor_from_config
 from .tts import TTSEngine
-from .tts.glados_tts import GladosTTSEngine, create_glados_engine_from_existing
+from .tts.glados_tts import GladosTTSEngine
 from .tts.kokoro_tts import KokoroTTSEngine, create_kokoro_engine_from_existing
 from .tts.elevenlabs_tts import ElevenLabsTTSEngine
 from .audio_utils import play_audio, save_audio
@@ -72,12 +72,7 @@ class VoiceEngine:
                 phonemizer_path = self._resolve_path(phonemizer_path)
             
             speed = voice_config.get("speed", 1.0)
-            
-            # Try to use existing GLaDOS implementation if available
-            try:
-                engine = create_glados_engine_from_existing(model_path, speed)
-            except Exception:
-                engine = GladosTTSEngine(model_path, phonemizer_path, speed)
+            engine = GladosTTSEngine(model_path, phonemizer_path, speed)
             
         elif engine_type == "kokoro":
             model_path = self._resolve_path(voice_config["model_path"])
