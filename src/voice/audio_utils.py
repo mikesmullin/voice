@@ -32,14 +32,28 @@ def play_audio(audio: np.ndarray, sample_rate: int) -> None:
     if sd is None:
         raise ImportError("sounddevice is required for audio playback. Install with: pip install sounddevice")
     
-    print(f"[Audio] Playing audio ({len(audio)/sample_rate:.2f}s)")
+    # Get default output device info
+    default_device = sd.default.device[1]  # Output device
+    device_info = sd.query_devices(default_device)
+    
+    print(f"[Audio] Playing audio ({len(audio)/sample_rate:.2f}s) on: {device_info['name']}")
+    print(f"[Audio] Audio shape: {audio.shape}, dtype: {audio.dtype}, range: [{audio.min():.3f}, {audio.max():.3f}]")
     
     try:
+        # Ensure audio is the right shape and type
+        if len(audio.shape) == 1:
+            # Mono audio, reshape to (N, 1) for sounddevice
+            audio_to_play = audio.reshape(-1, 1)
+        else:
+            audio_to_play = audio
+            
         # Play audio and wait for completion
-        sd.play(audio, samplerate=sample_rate)
-        sd.wait()
+        sd.play(audio_to_play, samplerate=sample_rate, device=default_device, blocking=True)
+        print(f"[Audio] Playback complete")
     except Exception as e:
         print(f"Error playing audio: {e}")
+        import traceback
+        traceback.print_exc()
 
 
 def save_audio_wav(audio: np.ndarray, sample_rate: int, output_path: str) -> None:

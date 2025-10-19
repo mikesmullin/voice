@@ -185,9 +185,8 @@ class VoiceEngine:
         audio_config = self.config.get("audio", {})
         
         if output_file:
-            # Save to file
-            output_format = audio_config.get("format", "ogg")
-            save_audio(audio_data, sample_rate, output_file, output_format)
+            # Save to file (format auto-detected from extension)
+            save_audio(audio_data, sample_rate, output_file, format=None)
         else:
             # Play audio if auto_play is enabled
             auto_play = audio_config.get("auto_play", True)

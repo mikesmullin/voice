@@ -1,22 +1,25 @@
 [project]
-name = "voice"
-version = "0.1.0"
-description = "A flexible text-to-speech CLI with voice presets and LLM integration"
-requires-python = ">=3.9"
 dependencies = [
-    "pyyaml>=6.0",
-    "numpy>=1.24.0",
-    "soundfile>=0.12.1",
-    "sounddevice>=0.4.6",
-    "onnxruntime>=1.16.0",
-    "requests>=2.31.0",
-    "elevenlabs>=0.2.0",
-    "pydub>=0.25.1",
+  "pyyaml>=6.0",
+  "numpy>=1.24.0",
+  "soundfile>=0.12.1",
+  "sounddevice>=0.4.6",
+  "onnxruntime>=1.16.0",
+  "requests>=2.31.0",
+  "elevenlabs>=0.2.0",
+  "pydub>=0.25.1",
 ]
+description = "A flexible text-to-speech CLI with voice presets and LLM integration"
+name = "voice"
+requires-python = ">=3.9"
+version = "0.1.0"
 
 [project.scripts]
 voice = "voice.cli:main"
 
+[tool.setuptools.packages.find]
+where = ["src"]
+
 [build-system]
-requires = ["setuptools>=61.0"]
-build-backend = "setuptools.build_backend"
+build-backend = "setuptools.build_meta"
+requires = ["setuptools>=61.0", "wheel"]

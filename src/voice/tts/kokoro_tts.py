@@ -1,6 +1,7 @@
 """Kokoro TTS engine implementation."""
 
 import os
+from pathlib import Path
 from typing import Optional
 import numpy as np
 
@@ -129,7 +130,7 @@ def create_kokoro_engine_from_existing(
         from pathlib import Path
         
         # Add parent src to path
-        parent_src = Path(__file__).parent.parent.parent / "src"
+        parent_src = Path(__file__).parent.parent.parent.parent.parent / "src"
         if parent_src.exists() and str(parent_src) not in sys.path:
             sys.path.insert(0, str(parent_src))
         
@@ -145,20 +146,27 @@ def create_kokoro_engine_from_existing(
                 self.synthesizer = None
                 
             def initialize(self) -> None:
-                self.synthesizer = tts_kokoro.Synthesizer(model_path=self.model_path)
+                # Use the SpeechSynthesizer class from the actual implementation
+                self.synthesizer = tts_kokoro.SpeechSynthesizer(
+                    model_path=Path(self.model_path),
+                    voice=self.voice
+                )
+                print(f"[Kokoro TTS] Using real GLaDOS Kokoro implementation with voice: {self.voice}")
                 
             def synthesize(self, text: str) -> np.ndarray:
                 if self.synthesizer is None:
                     raise RuntimeError("TTS engine not initialized")
                 
-                audio = self.synthesizer.generate_speech_audio(text, voice=self.voice)
+                print(f"[Kokoro TTS - {self.voice}] Synthesizing: {text}")
+                audio = self.synthesizer.generate_speech_audio(text)
                 return audio
                 
             def get_sample_rate(self) -> int:
-                return 22050
+                return 24000  # Kokoro uses 24kHz
         
         return KokoroWrapper(model_path, voice, speed)
         
-    except ImportError:
+    except ImportError as e:
+        print(f"Warning: Could not import GLaDOS Kokoro implementation: {e}")
         # Fall back to standalone implementation
         return KokoroTTSEngine(model_path, voice=voice, speed=speed)
