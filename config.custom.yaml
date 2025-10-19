@@ -1,0 +1,54 @@
+# Custom Voice Configuration Example
+# Copy this file and customize it for your needs
+
+# LLM Configuration
+llm:
+  backend: "ollama"  # "ollama" or "none"
+  model: "llama3.2"
+  api_url: "http://localhost:11434/api/chat"
+  timeout: 30
+
+# Audio settings
+audio:
+  sample_rate: 22050
+  format: "ogg"
+  auto_play: true
+
+# Custom voice presets
+voices:
+  # Your custom voice based on Kokoro
+  my_voice:
+    tts_engine: "kokoro"
+    model_path: "../models/TTS/kokoro-v1.0.fp16.onnx"
+    phonemizer_path: "../models/TTS/phomenizer_en.onnx"
+    voice: "af_bella"
+    speed: 1.0
+    enable_llm: false
+  
+  # Custom personality: Motivational coach
+  coach:
+    tts_engine: "kokoro"
+    model_path: "../models/TTS/kokoro-v1.0.fp16.onnx"
+    phonemizer_path: "../models/TTS/phomenizer_en.onnx"
+    voice: "am_adam"
+    speed: 1.05
+    enable_llm: true
+    system_prompt: |
+      You are an enthusiastic motivational coach.
+      Transform the user's text into an inspiring, energetic message.
+      Use phrases like "You've got this!", "Believe in yourself!", etc.
+      Keep it short, punchy, and motivating - 2 sentences max.
+      
+  # Custom personality: Shakespeare
+  shakespeare:
+    tts_engine: "kokoro"
+    model_path: "../models/TTS/kokoro-v1.0.fp16.onnx"
+    phonemizer_path: "../models/TTS/phomenizer_en.onnx"
+    voice: "am_michael"
+    speed: 0.9
+    enable_llm: true
+    system_prompt: |
+      You are William Shakespeare.
+      Transform the user's text into Elizabethan English with poetic flair.
+      Use "thee", "thou", "thy", etc. Add metaphors and dramatic language.
+      Keep it concise but theatrical - 2-3 sentences.

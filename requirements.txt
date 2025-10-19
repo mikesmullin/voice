@@ -1,0 +1,18 @@
+# Core dependencies
+pyyaml>=6.0
+numpy>=1.24.0
+soundfile>=0.12.1
+sounddevice>=0.4.6
+
+# ONNX Runtime (choose based on platform)
+onnxruntime-gpu>=1.16.0; sys_platform == 'win32'
+onnxruntime>=1.16.0; sys_platform == 'darwin'
+
+# LLM integration (optional)
+requests>=2.31.0
+
+# ElevenLabs API (optional)
+elevenlabs>=0.2.0
+
+# Audio utilities
+pydub>=0.25.1
