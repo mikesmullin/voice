@@ -42,7 +42,7 @@ Thumbs.db
 *.mp3
 
 # Models (too large for git)
-models/
+models/TTS/
 *.onnx
 
 # Config overrides
