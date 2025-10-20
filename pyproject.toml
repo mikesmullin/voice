@@ -6,7 +6,6 @@ dependencies = [
   "sounddevice>=0.4.6",
   "onnxruntime>=1.16.0",
   "requests>=2.31.0",
-  "elevenlabs>=0.2.0",
   "pydub>=0.25.1",
 ]
 description = "A flexible text-to-speech CLI with voice presets and LLM integration"
@@ -15,10 +14,10 @@ requires-python = ">=3.9"
 version = "0.1.0"
 
 [project.scripts]
-voice = "voice_tts.cli:main"
+voice = "voice.cli:main"
 
 [tool.setuptools]
-packages = ["voice_tts", "voice_tts.tts"]
+packages = ["voice", "voice.tts"]
 
 [build-system]
 build-backend = "setuptools.build_meta"

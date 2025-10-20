@@ -5,6 +5,7 @@ from pathlib import Path
 from typing import Optional
 import numpy as np
 import time
+import warnings
 
 try:
     import soundfile as sf
@@ -17,7 +18,10 @@ except ImportError:
     sd = None
 
 try:
-    from pydub import AudioSegment
+    # Suppress pydub's ffmpeg warning since we use soundfile for WAV output
+    with warnings.catch_warnings():
+        warnings.filterwarnings("ignore", message=".*Couldn't find ffmpeg.*")
+        from pydub import AudioSegment
 except ImportError:
     AudioSegment = None
 

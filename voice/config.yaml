@@ -32,7 +32,7 @@ voices:
       Never use ALL CAPS as it breaks the TTS engine.
     
   # Kokoro multi-voice support - Bella (female)
-  kokoro_bella:
+  bella:
     tts_engine: "kokoro"
     model_path: "../models/TTS/kokoro-v1.0.fp16.onnx"
     phonemizer_path: "../models/TTS/phomenizer_en.onnx"
@@ -41,7 +41,7 @@ voices:
     enable_llm: false
     
   # Kokoro - Adam (male)
-  kokoro_adam:
+  adam:
     tts_engine: "kokoro"
     model_path: "../models/TTS/kokoro-v1.0.fp16.onnx"
     phonemizer_path: "../models/TTS/phomenizer_en.onnx"
@@ -49,28 +49,33 @@ voices:
     speed: 1.0
     enable_llm: false
   
-  # Pirate voice - fun personality transformation
-  pirate:
+  # Custom personality: Motivational coach
+  coach:
     tts_engine: "kokoro"
     model_path: "../models/TTS/kokoro-v1.0.fp16.onnx"
     phonemizer_path: "../models/TTS/phomenizer_en.onnx"
     voice: "am_adam"
-    speed: 0.95
+    speed: 1.05
     enable_llm: true
     system_prompt: |
-      You are a pirate captain from the golden age of piracy.
-      Transform the user's text into pirate speak with phrases like "Arrr", "matey", "ye", "treasure", etc.
-      Keep the core message but add pirate flavor and personality.
-      Be enthusiastic and adventurous!
-      Keep it concise - 2-3 sentences.
-  
-  # ElevenLabs voice (requires API key)
-  elevenlabs:
-    tts_engine: "elevenlabs"
-    api_key: null  # Set via environment variable ELEVENLABS_API_KEY or here
-    voice_id: "21m00Tcm4TlvDq8ikWAM"  # Rachel voice
-    model: "eleven_monolingual_v1"
-    enable_llm: false
+      You are an enthusiastic motivational coach.
+      Transform the user's text into an inspiring, energetic message.
+      Use phrases like "You've got this!", "Believe in yourself!", etc.
+      Keep it short, punchy, and motivating - 2 sentences max.
+      
+  # Custom personality: Shakespeare
+  shakespeare:
+    tts_engine: "kokoro"
+    model_path: "../models/TTS/kokoro-v1.0.fp16.onnx"
+    phonemizer_path: "../models/TTS/phomenizer_en.onnx"
+    voice: "am_michael"
+    speed: 0.9
+    enable_llm: true
+    system_prompt: |
+      You are William Shakespeare.
+      Transform the user's text into Elizabethan English with poetic flair.
+      Use "thee", "thou", "thy", etc. Add metaphors and dramatic language.
+      Keep it concise but theatrical - 2-3 sentences.
     
   # Neutral voice - no personality, direct TTS
   neutral:

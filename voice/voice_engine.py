@@ -8,8 +8,7 @@ import yaml
 from .text_processor import TextProcessor, create_processor_from_config
 from .tts import TTSEngine
 from .tts.glados_tts import GladosTTSEngine
-from .tts.kokoro_tts import KokoroTTSEngine, create_kokoro_engine_from_existing
-from .tts.elevenlabs_tts import ElevenLabsTTSEngine
+from .tts.kokoro_tts import KokoroTTSEngine
 from .audio_utils import play_audio, save_audio
 
 
@@ -83,18 +82,7 @@ class VoiceEngine:
             voice = voice_config.get("voice", "af_bella")
             speed = voice_config.get("speed", 1.0)
             
-            # Try to use existing Kokoro implementation if available
-            try:
-                engine = create_kokoro_engine_from_existing(model_path, voice, speed)
-            except Exception:
-                engine = KokoroTTSEngine(model_path, phonemizer_path, voice, speed)
-            
-        elif engine_type == "elevenlabs":
-            api_key = voice_config.get("api_key")
-            voice_id = voice_config.get("voice_id", "21m00Tcm4TlvDq8ikWAM")
-            model = voice_config.get("model", "eleven_monolingual_v1")
-            
-            engine = ElevenLabsTTSEngine(api_key, voice_id, model)
+            engine = KokoroTTSEngine(model_path, phonemizer_path, voice, speed)
             
         else:
             raise ValueError(f"Unknown TTS engine type: {engine_type}")
