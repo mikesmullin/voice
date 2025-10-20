@@ -133,7 +133,15 @@ class GladosSynthesizer:
         if audio_chunks:
             # Concatenate all 1D audio chunks
             audio: NDArray[np.float32] = np.concatenate(audio_chunks)
-            return audio
+            
+            # Add 250ms silence at the beginning for GLaDOS to prevent cutoff
+            # This is specific to GLaDOS and ensures the beginning of speech is not clipped
+            silence_duration = 0.25  # 250ms
+            silence_samples = int(self.sample_rate * silence_duration)
+            silence = np.zeros(silence_samples, dtype=audio.dtype)
+            audio_with_silence = np.concatenate([silence, audio])
+            
+            return audio_with_silence
         return np.array([], dtype=np.float32)
 
     def _phonemizer(self, input_text: str) -> list[str]:

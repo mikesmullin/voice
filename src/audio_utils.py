@@ -54,16 +54,9 @@ def play_audio(audio: np.ndarray, sample_rate: int) -> None:
             audio_to_play = audio.flatten()
         else:
             audio_to_play = audio
-        
-        # Add a small silence buffer at the start to prevent cutoff
-        # This helps with audio driver latency and ensures the beginning of audio is heard
-        silence_duration = 0.1  # 100ms - increased from 50ms for better compatibility
-        silence_samples = int(sample_rate * silence_duration)
-        silence = np.zeros(silence_samples, dtype=audio_to_play.dtype)
-        audio_with_buffer = np.concatenate([silence, audio_to_play])
             
         # Play audio with non-blocking mode first to allow driver to initialize
-        sd.play(audio_with_buffer, samplerate=sample_rate, device=default_device, blocking=False)
+        sd.play(audio_to_play, samplerate=sample_rate, device=default_device, blocking=False)
         
         # Small delay to let playback start
         time.sleep(0.01)
@@ -94,15 +87,8 @@ def save_audio_wav(audio: np.ndarray, sample_rate: int, output_path: str) -> Non
     if output_dir:
         os.makedirs(output_dir, exist_ok=True)
     
-    # Add silence buffer at start to prevent cutoff when playing the file
-    # Increased from 50ms to 100ms for better compatibility
-    silence_duration = 0.1  # 100ms
-    silence_samples = int(sample_rate * silence_duration)
-    silence = np.zeros(silence_samples, dtype=audio.dtype)
-    audio_with_buffer = np.concatenate([silence, audio])
-    
     # Save as WAV
-    sf.write(output_path, audio_with_buffer, sample_rate)
+    sf.write(output_path, audio, sample_rate)
     print(f"[Audio] Saved to: {output_path}")
 
 
