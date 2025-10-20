@@ -25,30 +25,31 @@ A cross-platform text-to-speech (TTS) system with voice presets and optional LLM
 
 ### Setup
 
-1. **Clone or navigate to the voice directory:**
-   ```bash
-   cd Z:\Making_Games\GLaDOS\voice
-   ```
+1. **Create virtual environment:**
+  ```bash
+  uv venv --python 3.12.8
+  source .venv/bin/activate  # On Windows: .venv\Scripts\activate
+  ```
 
 2. **Install dependencies:**
    
    **For Windows with NVIDIA GPU:**
    ```cmd
-   pip install -r requirements.txt
-   pip install onnxruntime-gpu
+   uv pip install -r requirements.txt
+   uv pip install onnxruntime-gpu
    ```
    
    **For macOS:**
    ```bash
-   pip install -r requirements.txt
+   uv pip install -r requirements.txt
    ```
 
 3. **Install the package:**
    ```bash
-   pip install -e .
+   uv pip install -e .
    ```
 
-4. **Set up Ollama (optional, for LLM features):**
+4. **Set up Ollama (optional, for text-to-text LLM features; ie. if you want to let the voice change the text to match a personality):**
    - Download and install [Ollama](https://ollama.ai)
    - Pull a model: `ollama pull llama3.2`
    - Ensure Ollama is running: `ollama serve`
@@ -70,8 +71,8 @@ voice --list
 ### Synthesize speech:
 ```bash
 voice glados "Hello, test subject."
-voice pirate "Where be the treasure?"
-voice neutral "Just normal speech, please."
+voice bella "It's a beautiful morning. Time for a cup of coffee."
+voice adam "Another day another dollar."
 ```
 
 ### Save to file:
@@ -108,7 +109,7 @@ Options:
 
 Examples:
   voice glados "Hello, test subject."
-  voice pirate "Where be the treasure?"
+  voice bella "You've got mail."
   voice -o output.ogg glados "Save to file"
   voice --list
   voice --info glados
@@ -118,7 +119,7 @@ Examples:
 
 Voice presets are configured in `config.yaml`. Each preset can specify:
 
-- **TTS Engine**: `glados`, `kokoro`, or `elevenlabs`
+- **TTS Engine**: `glados`, or `kokoro`
 - **Model Path**: Path to ONNX model files
 - **Voice Parameters**: Speed, voice variant, etc.
 - **LLM Integration**: Enable text transformation with system prompts
@@ -173,11 +174,6 @@ voices:
 - ONNX-based, GPU-accelerated
 - Requires `kokoro-v1.0.fp16.onnx` model
 
-### 3. ElevenLabs (Cloud)
-- High-quality cloud-based TTS
-- Requires API key (set in config or `ELEVENLABS_API_KEY` env var)
-- Not privacy-preserving (uses cloud API)
-
 ## LLM Integration
 
 Voice can optionally transform text using a local LLM before synthesis:
@@ -226,42 +222,6 @@ model_path: "/absolute/path/to/models/TTS/glados.onnx"
 - **Windows**: Install CUDA and `onnxruntime-gpu`
 - **macOS**: ONNX Runtime automatically uses optimized backends
 - CPU fallback is automatic if GPU is unavailable
-
-## Project Structure
-
-```
-voice/
-├── cli.py                  # CLI entry point
-├── voice_engine.py         # Core orchestration
-├── text_processor.py       # LLM integration
-├── audio_utils.py          # Audio I/O
-├── config.yaml             # Voice presets
-├── requirements.txt        # Dependencies
-├── pyproject.toml          # Package configuration
-└── tts/
-    ├── __init__.py         # Base TTS interface
-    ├── glados_tts.py       # GLaDOS implementation
-    ├── kokoro_tts.py       # Kokoro implementation
-    └── elevenlabs_tts.py   # ElevenLabs implementation
-```
-
-## Development
-
-### Running from source:
-```bash
-cd voice
-python -m voice.cli glados "Test message"
-```
-
-### Adding a new TTS engine:
-1. Create `tts/my_engine_tts.py`
-2. Implement `TTSEngine` interface
-3. Register in `voice_engine.py`
-4. Add preset to `config.yaml`
-
-## License
-
-See LICENSE.txt in the parent directory.
 
 ## Acknowledgments
 
