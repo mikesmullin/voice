@@ -56,8 +56,8 @@ def play_audio(audio: np.ndarray, sample_rate: int) -> None:
             audio_to_play = audio
         
         # Add a small silence buffer at the start to prevent cutoff
-        # This helps with audio driver latency
-        silence_duration = 0.05  # 50ms
+        # This helps with audio driver latency and ensures the beginning of audio is heard
+        silence_duration = 0.1  # 100ms - increased from 50ms for better compatibility
         silence_samples = int(sample_rate * silence_duration)
         silence = np.zeros(silence_samples, dtype=audio_to_play.dtype)
         audio_with_buffer = np.concatenate([silence, audio_to_play])
@@ -95,7 +95,8 @@ def save_audio_wav(audio: np.ndarray, sample_rate: int, output_path: str) -> Non
         os.makedirs(output_dir, exist_ok=True)
     
     # Add silence buffer at start to prevent cutoff when playing the file
-    silence_duration = 0.05  # 50ms
+    # Increased from 50ms to 100ms for better compatibility
+    silence_duration = 0.1  # 100ms
     silence_samples = int(sample_rate * silence_duration)
     silence = np.zeros(silence_samples, dtype=audio.dtype)
     audio_with_buffer = np.concatenate([silence, audio])

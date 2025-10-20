@@ -43,6 +43,14 @@ class GladosTTSEngine(TTSEngine):
             model_path=Path(self.model_path),
             phoneme_path=phoneme_path
         )
+        
+        # Warm up the synthesizer with a dummy synthesis to ensure all buffers are ready
+        # This prevents audio cutoff on the first real synthesis
+        try:
+            _ = self.synthesizer.generate_speech_audio(".")
+            print(f"[GLaDOS TTS] Synthesizer warm-up complete")
+        except Exception as e:
+            print(f"[GLaDOS TTS] Warm-up synthesis failed (non-fatal): {e}")
     
     def synthesize(self, text: str) -> np.ndarray:
         """

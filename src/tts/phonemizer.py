@@ -47,7 +47,7 @@ class ModelConfig:
 
 class Punctuation(Enum):
     """Punctuation and special characters for phonemization."""
-    PUNCTUATION = "().,:?!/–"
+    PUNCTUATION = "().,:?!/–'"
     HYPHEN = "-"
     SPACE = " "
 
@@ -141,14 +141,15 @@ class Phonemizer:
 
         This method handles different word variations by checking the dictionary with original, lowercase, and
         title-cased versions of the word. It also handles punctuation and empty strings as special cases.
+        For unknown words, returns the word itself as a fallback.
 
         Args:
             word (str): The word to look up in the phoneme dictionary.
             punc_set (set[str]): A set of punctuation characters.
 
         Returns:
-            str | None: The phoneme entry for the word if found, the word itself if it's a punctuation or
-            empty string, or None if no entry exists.
+            str | None: The phoneme entry for the word if found, the word itself if it's a punctuation,
+            empty string, or unknown word.
         """
         if word in punc_set or len(word) == 0:
             return word
@@ -159,7 +160,9 @@ class Phonemizer:
         elif word.title() in self.phoneme_dict:
             return self.phoneme_dict[word.title()]
         else:
-            return None
+            # Return the word itself as fallback for unknown words
+            # The ONNX model will handle phonemization
+            return word
     
     def convert_to_phonemes(self, texts: list[str], lang: str = "en_us") -> list[str]:
         """
@@ -190,15 +193,9 @@ class Phonemizer:
         for text_tokens in split_text:
             text_phons = []
             for token in text_tokens:
-                # Get phoneme for this token
-                phons = word_phonemes.get(token)
-                if phons is not None:
-                    text_phons.append(phons)
-                elif token.lower() in word_phonemes:
-                    text_phons.append(word_phonemes[token.lower()])
-                else:
-                    # Skip unknown tokens
-                    pass
+                # Get phoneme for this token (will be the word itself if not in dict)
+                if token in word_phonemes:
+                    text_phons.append(word_phonemes[token])
             phoneme_lists.append(text_phons)
         
         # Join phonemes into strings
