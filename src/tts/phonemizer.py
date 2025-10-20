@@ -91,8 +91,9 @@ class Phonemizer:
         self.token_to_idx = self._load_pickle(self.config.TOKEN_TO_IDX_PATH)
         self.idx_to_token = self._load_pickle(self.config.IDX_TO_TOKEN_PATH)
         
-        # Add GLaDOS to phoneme dictionary
+        # Add special words to phoneme dictionary
         self.phoneme_dict["glados"] = "ɡlˈɑːdɑːs"
+        self.phoneme_dict["I"] = "aɪ"  # Pronoun "I" should sound like "eye"
         
         # Setup ONNX Runtime
         providers = ort.get_available_providers()
