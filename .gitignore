@@ -41,9 +41,9 @@ Thumbs.db
 *.ogg
 *.mp3
 
-# Models (too large for git)
-models/TTS/
-*.onnx
+# Models (large downloadable files only - keep pkl/json in git)
+models/TTS/*.onnx
+models/TTS/*.bin
 
 # Config overrides
 config.local.yaml
