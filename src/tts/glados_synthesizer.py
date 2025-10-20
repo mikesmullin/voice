@@ -131,19 +131,11 @@ class GladosSynthesizer:
         audio_chunks = [self._synthesize_ids_to_audio(phoneme_ids) for phoneme_ids in phoneme_ids_list]
 
         if audio_chunks:
-            # Concatenate all audio chunks
-            if len(audio_chunks) == 1:
-                # Single chunk - just use it directly
-                audio = audio_chunks[0]
-            else:
-                # Multiple chunks - concatenate
-                audio: NDArray[np.float32] = np.concatenate(audio_chunks, axis=0)
-            
-            # Ensure it's 1D
-            if len(audio.shape) > 1:
-                audio = audio.squeeze()
-            
-            return audio
+            # Use original concatenation approach for proper audio handling
+            # Each chunk is 1D from _synthesize_ids_to_audio, so we need to expand dims first
+            audio_chunks_expanded = [np.expand_dims(chunk, axis=1) for chunk in audio_chunks]
+            audio: NDArray[np.float32] = np.concatenate(audio_chunks_expanded, axis=1).T
+            return audio.squeeze()
         return np.array([], dtype=np.float32)
 
     def _phonemizer(self, input_text: str) -> list[str]:
