@@ -9,7 +9,6 @@ import json
 from pathlib import Path
 from pickle import load
 from typing import Any
-import sys
 
 import numpy as np
 from numpy.typing import NDArray

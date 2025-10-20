@@ -2,7 +2,6 @@
 
 import sys
 import argparse
-from pathlib import Path
 from typing import Optional
 
 from .voice_engine import VoiceEngine

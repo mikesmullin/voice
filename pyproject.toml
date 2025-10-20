@@ -14,10 +14,10 @@ requires-python = ">=3.9"
 version = "0.1.0"
 
 [project.scripts]
-voice = "voice.cli:main"
+voice = "src.cli:main"
 
 [tool.setuptools]
-packages = ["voice", "voice.tts"]
+packages = ["src", "src.tts"]
 
 [build-system]
 build-backend = "setuptools.build_meta"
