@@ -1,4 +1,4 @@
-# Voice - Flexible Text-to-Speech CLI
+# 🗣️Voice
 
 A cross-platform text-to-speech (TTS) system with voice presets and optional LLM text transformation. Works on Windows 11 and macOS with local processing for privacy.
 

@@ -8,8 +8,8 @@ from typing import Any
 
 # Try to import from parent GLaDOS project
 try:
-    # Add parent src to path
-    parent_src = Path(__file__).parent.parent.parent.parent.parent / "src"
+    # Add parent src to path (voice is now at voice/ level, parent src is at ../src)
+    parent_src = Path(__file__).parent.parent.parent.parent / "src"
     if parent_src.exists() and str(parent_src) not in sys.path:
         sys.path.insert(0, str(parent_src))
     
@@ -46,8 +46,10 @@ except ImportError:
             token_to_idx_path: Path | None = None,
             idx_to_token_path: Path | None = None,
         ) -> None:
-            # Default paths relative to models directory
-            models_dir = Path(__file__).parent.parent.parent.parent.parent / "models" / "TTS"
+            # Default paths relative to voice package
+            # This resolves to voice/models/TTS/
+            package_dir = Path(__file__).parent.parent.parent
+            models_dir = package_dir / "models" / "TTS"
             self.MODEL_PATH = model_path or models_dir / "phomenizer_en.onnx"
             self.PHONEME_DICT_PATH = phoneme_dict_path or models_dir / "lang_phoneme_dict.pkl"
             self.TOKEN_TO_IDX_PATH = token_to_idx_path or models_dir / "token_to_idx.pkl"

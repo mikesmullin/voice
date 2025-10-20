@@ -129,8 +129,8 @@ def create_kokoro_engine_from_existing(
         import sys
         from pathlib import Path
         
-        # Add parent src to path
-        parent_src = Path(__file__).parent.parent.parent.parent.parent / "src"
+        # Add parent src to path (voice is now at voice/ level, parent src is at ../src)
+        parent_src = Path(__file__).parent.parent.parent.parent / "src"
         if parent_src.exists() and str(parent_src) not in sys.path:
             sys.path.insert(0, str(parent_src))
         
