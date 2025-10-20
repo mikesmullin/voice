@@ -74,6 +74,12 @@ Examples:
         version="voice 0.1.0"
     )
     
+    parser.add_argument(
+        "--no-transform",
+        action="store_true",
+        help="Skip LLM text transformation and use input text verbatim"
+    )
+    
     return parser.parse_args(args)
 
 
@@ -137,7 +143,8 @@ def main(args: Optional[list] = None) -> int:
         engine.synthesize(
             text=parsed_args.text,
             voice_name=parsed_args.preset,
-            output_file=parsed_args.output
+            output_file=parsed_args.output,
+            skip_llm=parsed_args.no_transform
         )
         
         # Clean up

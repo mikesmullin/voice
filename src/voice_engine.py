@@ -127,7 +127,8 @@ class VoiceEngine:
         self,
         text: str,
         voice_name: str,
-        output_file: Optional[str] = None
+        output_file: Optional[str] = None,
+        skip_llm: bool = False
     ) -> None:
         """
         Synthesize speech from text using specified voice.
@@ -136,6 +137,7 @@ class VoiceEngine:
             text: Input text to synthesize
             voice_name: Name of the voice preset to use
             output_file: Optional output file path. If None, plays audio.
+            skip_llm: If True, skip LLM text transformation (use text verbatim)
         """
         # Get voice configuration
         voices = self.config.get("voices", {})
@@ -147,8 +149,8 @@ class VoiceEngine:
         
         voice_config = voices[voice_name]
         
-        # Process text with LLM if enabled
-        enable_llm = voice_config.get("enable_llm", False)
+        # Process text with LLM if enabled (unless skip_llm is True)
+        enable_llm = voice_config.get("enable_llm", False) and not skip_llm
         system_prompt = voice_config.get("system_prompt")
         
         if enable_llm and system_prompt:

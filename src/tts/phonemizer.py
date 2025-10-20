@@ -47,26 +47,32 @@ class ModelConfig:
 
 class Punctuation(Enum):
     """Punctuation and special characters for phonemization."""
-    PUNCTUATION = "().,:?!/–'"
+    PUNCTUATION = "().,:?!/–"  # Note: apostrophe removed - handled separately for contractions
     HYPHEN = "-"
     SPACE = " "
+    APOSTROPHE = "'"
 
     @classmethod
     @cache
     def get_punc_set(cls) -> set[str]:
         """Get set of all punctuation characters to preserve."""
-        return set(cls.PUNCTUATION.value + cls.HYPHEN.value + cls.SPACE.value)
+        # Include apostrophe in the set but don't split it in patterns
+        return set(cls.PUNCTUATION.value + cls.HYPHEN.value + cls.SPACE.value + cls.APOSTROPHE.value)
 
     @classmethod
     @cache
     def get_punc_pattern(cls) -> re.Pattern[str]:
         """
         Compile a regular expression pattern to match punctuation and space characters.
+        
+        Note: Apostrophes are NOT included in the split pattern to preserve contractions
+        like "I'm", "don't", "we're", etc.
 
         Returns:
             re.Pattern[str]: A compiled regex pattern that matches any punctuation or space character.
         """
         return re.compile(f"([{cls.PUNCTUATION.value + cls.SPACE.value}])")
+
 
 
 class Phonemizer:
@@ -141,18 +147,30 @@ class Phonemizer:
 
         This method handles different word variations by checking the dictionary with original, lowercase, and
         title-cased versions of the word. It also handles punctuation and empty strings as special cases.
-        For unknown words, returns the word itself as a fallback.
+        For unknown words, uses the ONNX model to predict phonemes. For contractions, expands them first.
 
         Args:
             word (str): The word to look up in the phoneme dictionary.
             punc_set (set[str]): A set of punctuation characters.
 
         Returns:
-            str | None: The phoneme entry for the word if found, the word itself if it's a punctuation,
-            empty string, or unknown word.
+            str | None: The phoneme entry for the word if found, or predicted phonemes for unknown words.
         """
         if word in punc_set or len(word) == 0:
             return word
+        
+        # Check if this is a contraction and expand it
+        expanded = self._expand_contractions(word)
+        if len(expanded) > 1:
+            # This was a contraction - phonemize each part and concatenate
+            phonemes = []
+            for part in expanded:
+                phon = self._get_dict_entry(part, punc_set)
+                if phon:
+                    phonemes.append(phon)
+            return "".join(phonemes)
+        
+        # Not a contraction, proceed with normal lookup
         if word in self.phoneme_dict:
             return self.phoneme_dict[word]
         elif word.lower() in self.phoneme_dict:
@@ -160,9 +178,8 @@ class Phonemizer:
         elif word.title() in self.phoneme_dict:
             return self.phoneme_dict[word.title()]
         else:
-            # Return the word itself as fallback for unknown words
-            # The ONNX model will handle phonemization
-            return word
+            # Use ONNX model to predict phonemes for unknown words
+            return self._predict_phonemes(word)
     
     def convert_to_phonemes(self, texts: list[str], lang: str = "en_us") -> list[str]:
         """
@@ -202,7 +219,128 @@ class Phonemizer:
         return ["".join(phoneme_list) for phoneme_list in phoneme_lists]
     
     def _predict_phonemes(self, word: str) -> str:
-        """Predict phonemes for a word using the ONNX model."""
-        # This is a simplified version - the real implementation is more complex
-        # For now, return empty string and let the model handle it
-        return ""
+        """
+        Predict phonemes for a word using the ONNX model.
+        
+        Args:
+            word: The word to phonemize
+            
+        Returns:
+            Predicted phoneme string
+        """
+        # Convert word to lowercase for processing
+        word_lower = word.lower()
+        
+        # Convert characters to token indices
+        char_indices = []
+        for char in word_lower:
+            if char in self.token_to_idx:
+                char_indices.append(self.token_to_idx[char])
+            else:
+                # Skip unknown characters
+                continue
+        
+        if not char_indices:
+            # If no valid characters, return the word as-is
+            return word
+        
+        # Remember the actual number of characters for later
+        actual_len = len(char_indices)
+        
+        # Pad or truncate to model input length (64)
+        max_len = self.config.MODEL_INPUT_LENGTH
+        if len(char_indices) < max_len:
+            # Pad with 0 (underscore token)
+            char_indices = char_indices + [0] * (max_len - len(char_indices))
+        else:
+            # Truncate if too long
+            char_indices = char_indices[:max_len]
+        
+        # Prepare input for ONNX model
+        input_array = np.array([char_indices], dtype=np.int64)
+        
+        try:
+            # Run inference
+            outputs = self.ort_session.run(None, {"modelInput": input_array})
+            phoneme_output = outputs[0][0]  # (batch_size=1, 64, 64) -> (64, 64)
+            
+            # Convert model output to phoneme indices
+            # The model outputs logits for each position and phoneme class
+            # Take argmax to get the most likely phoneme for each position
+            phoneme_indices = np.argmax(phoneme_output, axis=1)
+            
+            # Convert indices to phoneme strings, only for actual input length
+            phonemes = []
+            for i in range(actual_len):
+                idx = phoneme_indices[i]
+                if idx in self.idx_to_token:
+                    token = self.idx_to_token[idx]
+                    # Skip special tokens and separators
+                    if token not in ['<start>', '<end>', '_', ' ']:
+                        phonemes.append(token)
+            
+            result = "".join(phonemes)
+            return result if result else word
+            
+        except Exception as e:
+            # If inference fails, return the word as-is
+            return word
+
+    def _expand_contractions(self, word: str) -> list[str]:
+        """
+        Expand English contractions into their full forms for phonemization.
+        
+        For example: "I'm" -> ["I", "am"], "We're" -> ["We", "are"]
+        
+        Args:
+            word: The word that may be a contraction
+            
+        Returns:
+            A list of phoneme-ready words
+        """
+        # Common contractions mapping (all lowercase)
+        contractions_map = {
+            "i'm": ["i", "am"],
+            "he's": ["he", "is"],
+            "she's": ["she", "is"],
+            "it's": ["it", "is"],
+            "we're": ["we", "are"],
+            "they're": ["they", "are"],
+            "you're": ["you", "are"],
+            "don't": ["do", "not"],
+            "doesn't": ["does", "not"],
+            "didn't": ["did", "not"],
+            "won't": ["will", "not"],
+            "can't": ["can", "not"],
+            "couldn't": ["could", "not"],
+            "shouldn't": ["should", "not"],
+            "wouldn't": ["would", "not"],
+            "isn't": ["is", "not"],
+            "aren't": ["are", "not"],
+            "wasn't": ["was", "not"],
+            "weren't": ["were", "not"],
+            "haven't": ["have", "not"],
+            "hasn't": ["has", "not"],
+            "hadn't": ["had", "not"],
+            "i'll": ["i", "will"],
+            "he'll": ["he", "will"],
+            "she'll": ["she", "will"],
+            "we'll": ["we", "will"],
+            "they'll": ["they", "will"],
+            "you'll": ["you", "will"],
+            "i've": ["i", "have"],
+            "we've": ["we", "have"],
+            "they've": ["they", "have"],
+            "you've": ["you", "have"],
+        }
+        
+        # Check lowercase version
+        word_lower = word.lower()
+        if word_lower in contractions_map:
+            expanded = contractions_map[word_lower]
+            # If the original word was capitalized, capitalize the first expanded word
+            if word[0].isupper() and len(expanded) > 0:
+                expanded = [expanded[0].capitalize()] + expanded[1:]
+            return expanded
+        else:
+            return [word]
