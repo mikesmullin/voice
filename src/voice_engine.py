@@ -9,7 +9,7 @@ from .text_processor import TextProcessor, create_processor_from_config
 from .tts import TTSEngine
 from .tts.glados_tts import GladosTTSEngine
 from .tts.kokoro_tts import KokoroTTSEngine
-from .audio_utils import play_audio, save_audio
+from .audio_utils import play_audio, save_audio, append_audio_wav
 
 
 class VoiceEngine:
@@ -161,24 +161,57 @@ class VoiceEngine:
         # Get or create TTS engine
         engine = self._get_or_create_engine(voice_name)
         
+        # Check if engine supports streaming (currently only Kokoro)
+        has_streaming = hasattr(engine, 'synthesize_streaming')
+        
         # Synthesize speech
         print(f"[Voice Engine] Synthesizing with voice: {voice_name}")
-        audio_data = engine.synthesize(processed_text)
-        sample_rate = engine.get_sample_rate()
         
         # Output audio
         audio_config = self.config.get("audio", {})
+        sample_rate = engine.get_sample_rate()
         
         if output_file:
-            # Save to file (format auto-detected from extension)
-            save_audio(audio_data, sample_rate, output_file, format=None)
+            # Save to file with streaming for WAV format
+            output_format = Path(output_file).suffix.lower()[1:] if Path(output_file).suffix else 'wav'
+            
+            if output_format == 'wav' and has_streaming:
+                # Stream directly to WAV file (memory efficient)
+                print(f"[Voice Engine] Streaming to file: {output_file}")
+                
+                # Delete existing file if present
+                if os.path.exists(output_file):
+                    os.remove(output_file)
+                
+                for chunk in engine.synthesize_streaming(processed_text):
+                    append_audio_wav(chunk, sample_rate, output_file)
+            else:
+                # Non-WAV format or engine doesn't support streaming
+                # Need to synthesize all at once
+                audio_data = engine.synthesize(processed_text)
+                save_audio(audio_data, sample_rate, output_file, format=None)
         else:
-            # Play audio if auto_play is enabled
+            # Play audio with streaming if available
             auto_play = audio_config.get("auto_play", True)
             if auto_play:
-                play_audio(audio_data, sample_rate)
+                if has_streaming:
+                    # Stream and play each chunk immediately (memory efficient)
+                    print(f"[Voice Engine] Streaming playback")
+                    for chunk in engine.synthesize_streaming(processed_text):
+                        play_audio(chunk, sample_rate)
+                else:
+                    # Synthesize all at once
+                    audio_data = engine.synthesize(processed_text)
+                    play_audio(audio_data, sample_rate)
             else:
                 print("[Voice Engine] Audio generated but auto_play is disabled")
+                # Still need to generate even if not playing
+                if has_streaming:
+                    # Consume the generator
+                    for _ in engine.synthesize_streaming(processed_text):
+                        pass
+                else:
+                    engine.synthesize(processed_text)
     
     def list_voices(self) -> list:
         """

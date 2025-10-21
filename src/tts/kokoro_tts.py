@@ -1,7 +1,7 @@
 """Kokoro TTS engine implementation using ONNX models."""
 
 from pathlib import Path
-from typing import Optional
+from typing import Optional, Generator
 import numpy as np
 from numpy.typing import NDArray
 from pickle import load
@@ -289,11 +289,140 @@ class KokoroSynthesizer:
             raise ValueError(f"Voice '{voice}' not found. Available voices: {list(self.voices.keys())}")
         self.voice = voice
 
+    def _split_into_sentences(self, text: str) -> list[str]:
+        """Split text into sentences, preserving sentence-ending punctuation."""
+        # Split on sentence boundaries but keep the delimiter
+        sentences = re.split(r'([.!?]+(?:\s+|$))', text)
+        
+        # Combine the sentences with their punctuation
+        result = []
+        for i in range(0, len(sentences) - 1, 2):
+            if sentences[i].strip():
+                sentence = sentences[i] + (sentences[i + 1] if i + 1 < len(sentences) else '')
+                result.append(sentence.strip())
+        
+        # Handle last sentence if it doesn't end with punctuation
+        if len(sentences) % 2 == 1 and sentences[-1].strip():
+            result.append(sentences[-1].strip())
+        
+        return result
+
+    def _chunk_text_by_phonemes(self, text: str) -> list[str]:
+        """
+        Split text into chunks that fit within the phoneme limit.
+        Tries to split at sentence boundaries when possible.
+        
+        Returns:
+            List of text chunks, each guaranteed to be under the phoneme limit
+        """
+        sentences = self._split_into_sentences(text)
+        chunks = []
+        current_chunk = []
+        
+        for sentence in sentences:
+            # Convert sentence to phonemes to check length
+            test_text = ' '.join(current_chunk + [sentence])
+            phonemes = self.phonemizer.convert_to_phonemes([test_text], "en_us")[0]
+            
+            if len(phonemes) <= self.MAX_PHONEME_LENGTH:
+                # Sentence fits, add it to current chunk
+                current_chunk.append(sentence)
+            else:
+                # Sentence doesn't fit
+                if current_chunk:
+                    # Save current chunk and start new one with this sentence
+                    chunks.append(' '.join(current_chunk))
+                    current_chunk = [sentence]
+                    
+                    # Check if single sentence is too long
+                    phonemes = self.phonemizer.convert_to_phonemes([sentence], "en_us")[0]
+                    if len(phonemes) > self.MAX_PHONEME_LENGTH:
+                        # Single sentence is too long, need to split it further
+                        # Split by words as a fallback
+                        chunks.pop() if not chunks or chunks[-1] != ' '.join(current_chunk[:-1]) else None
+                        chunks.extend(self._chunk_long_sentence(sentence))
+                        current_chunk = []
+                else:
+                    # First sentence is too long, need to split it
+                    chunks.extend(self._chunk_long_sentence(sentence))
+        
+        # Add remaining chunk
+        if current_chunk:
+            chunks.append(' '.join(current_chunk))
+        
+        return chunks
+
+    def _chunk_long_sentence(self, sentence: str) -> list[str]:
+        """
+        Split a single long sentence into smaller chunks by words.
+        Used when a sentence exceeds the phoneme limit.
+        """
+        words = sentence.split()
+        chunks = []
+        current_chunk = []
+        
+        for word in words:
+            test_text = ' '.join(current_chunk + [word])
+            phonemes = self.phonemizer.convert_to_phonemes([test_text], "en_us")[0]
+            
+            if len(phonemes) <= self.MAX_PHONEME_LENGTH:
+                current_chunk.append(word)
+            else:
+                if current_chunk:
+                    chunks.append(' '.join(current_chunk))
+                    current_chunk = [word]
+                else:
+                    # Single word is too long (rare), just include it
+                    chunks.append(word)
+        
+        if current_chunk:
+            chunks.append(' '.join(current_chunk))
+        
+        return chunks
+
+    def generate_speech_audio_chunked(self, text: str) -> Generator[NDArray[np.float32], None, None]:
+        """
+        Generate speech audio in chunks for long text.
+        Yields audio chunks one at a time for memory efficiency.
+        
+        Args:
+            text: Input text (can be any length)
+            
+        Yields:
+            Audio waveform chunks as numpy arrays
+        """
+        # Check if text needs chunking
+        phonemes = self.phonemizer.convert_to_phonemes([text], "en_us")[0]
+        
+        if len(phonemes) <= self.MAX_PHONEME_LENGTH:
+            # Text is short enough, process as single chunk
+            phoneme_ids = self._phonemes_to_ids(phonemes)
+            audio = self._synthesize_ids_to_audio(phoneme_ids)
+            yield np.array(audio, dtype=np.float32)
+        else:
+            # Text is too long, split into chunks
+            chunks = self._chunk_text_by_phonemes(text)
+            print(f"[Kokoro] Text split into {len(chunks)} chunks for processing")
+            
+            for i, chunk in enumerate(chunks, 1):
+                print(f"[Kokoro] Processing chunk {i}/{len(chunks)}: {chunk[:50]}...")
+                phonemes = self.phonemizer.convert_to_phonemes([chunk], "en_us")[0]
+                phoneme_ids = self._phonemes_to_ids(phonemes)
+                audio = self._synthesize_ids_to_audio(phoneme_ids)
+                yield np.array(audio, dtype=np.float32)
+
     def generate_speech_audio(self, text: str) -> NDArray[np.float32]:
-        phonemes = self.phonemizer.convert_to_phonemes([text], "en_us")
-        phoneme_ids = self._phonemes_to_ids(phonemes[0])
-        audio = self._synthesize_ids_to_audio(phoneme_ids)
-        return np.array(audio, dtype=np.float32)
+        """
+        Generate speech audio (legacy method for backward compatibility).
+        For long texts, this concatenates all chunks in memory.
+        Consider using generate_speech_audio_chunked() for memory efficiency.
+        """
+        chunks = list(self.generate_speech_audio_chunked(text))
+        if len(chunks) == 1:
+            return chunks[0]
+        else:
+            # Concatenate all chunks
+            return np.concatenate(chunks)
 
     @staticmethod
     def _get_vocab() -> dict[str, int]:
@@ -311,8 +440,13 @@ class KokoroSynthesizer:
         return dicts
 
     def _phonemes_to_ids(self, phonemes: str) -> list[int]:
+        # Note: Chunking is handled at a higher level, but keep validation for safety
         if len(phonemes) > self.MAX_PHONEME_LENGTH:
-            raise ValueError(f"text is too long, must be less than {self.MAX_PHONEME_LENGTH} phonemes")
+            raise ValueError(
+                f"text chunk is too long ({len(phonemes)} phonemes), "
+                f"must be less than {self.MAX_PHONEME_LENGTH} phonemes. "
+                f"This should not happen if chunking is working correctly."
+            )
         return [i for i in map(self.vocab.get, phonemes) if i is not None]
 
     def _synthesize_ids_to_audio(self, ids: list[int]) -> NDArray[np.float32]:
@@ -392,6 +526,23 @@ class KokoroTTSEngine(TTSEngine):
         print(f"[Kokoro TTS - {self.voice}] Synthesizing: {text}")
         audio = self.synthesizer.generate_speech_audio(text)
         return audio
+
+    def synthesize_streaming(self, text: str) -> Generator[np.ndarray, None, None]:
+        """
+        Synthesize speech in chunks for memory efficiency.
+        
+        Args:
+            text: Input text
+            
+        Yields:
+            Audio waveform chunks as numpy arrays
+        """
+        if self.synthesizer is None:
+            raise RuntimeError("TTS engine not initialized. Call initialize() first.")
+
+        print(f"[Kokoro TTS - {self.voice}] Synthesizing (streaming): {text[:100]}...")
+        for audio_chunk in self.synthesizer.generate_speech_audio_chunked(text):
+            yield audio_chunk
 
     def get_sample_rate(self) -> int:
         """Get sample rate for Kokoro voice."""

@@ -92,6 +92,47 @@ def save_audio_wav(audio: np.ndarray, sample_rate: int, output_path: str) -> Non
     print(f"[Audio] Saved to: {output_path}")
 
 
+def append_audio_wav(audio: np.ndarray, sample_rate: int, output_path: str) -> None:
+    """
+    Append audio to an existing WAV file, or create new file if it doesn't exist.
+    
+    Args:
+        audio: Audio data as numpy array
+        sample_rate: Sample rate in Hz
+        output_path: Output file path
+    """
+    if sf is None:
+        raise ImportError("soundfile is required for saving audio. Install with: pip install soundfile")
+    
+    # Ensure output directory exists
+    output_dir = os.path.dirname(output_path)
+    if output_dir:
+        os.makedirs(output_dir, exist_ok=True)
+    
+    # Check if file exists
+    if os.path.exists(output_path):
+        # Read existing audio
+        existing_audio, existing_rate = sf.read(output_path)
+        
+        # Verify sample rate matches
+        if existing_rate != sample_rate:
+            raise ValueError(
+                f"Sample rate mismatch: existing file has {existing_rate} Hz, "
+                f"new audio has {sample_rate} Hz"
+            )
+        
+        # Concatenate audio
+        combined_audio = np.concatenate([existing_audio, audio])
+        
+        # Write combined audio
+        sf.write(output_path, combined_audio, sample_rate)
+        print(f"[Audio] Appended {len(audio)/sample_rate:.2f}s to: {output_path}")
+    else:
+        # File doesn't exist, create new file
+        sf.write(output_path, audio, sample_rate)
+        print(f"[Audio] Created new file: {output_path}")
+
+
 def save_audio_ogg(audio: np.ndarray, sample_rate: int, output_path: str) -> None:
     """
     Save audio to OGG file.
