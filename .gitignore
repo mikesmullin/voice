@@ -47,3 +47,5 @@ models/TTS/*.bin
 
 # Config overrides
 config.local.yaml
+
+PROMPT.md

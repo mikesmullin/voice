@@ -92,13 +92,15 @@ async def download_with_progress(
 
         # Verify checksum
         actual_checksum = hash_sha256.hexdigest()
-        
+
         # Skip checksum verification for files with no checksum
         if expected_checksum is None:
-            progress.update(task_id, status="[yellow]✓ Downloaded (no checksum)[/yellow]")
+            progress.update(
+                task_id, status="[yellow]✓ Downloaded (no checksum)[/yellow]"
+            )
             rprint(f"[dim]Info: {file_path.name} checksum: {actual_checksum}[/dim]")
             return True
-        
+
         if actual_checksum == expected_checksum:
             progress.update(task_id, status="[green]✓ Verified[/green]")
             return True
@@ -150,18 +152,22 @@ async def download_models() -> int:
 
     successful_downloads = sum(results)
     total_downloads = len(results)
-    
+
     if not all(results):
-        rprint(f"\n[bold red]⚠ {successful_downloads}/{total_downloads} files downloaded successfully[/bold red]")
+        rprint(
+            f"\n[bold red]⚠ {successful_downloads}/{total_downloads} files downloaded successfully[/bold red]"
+        )
         return 1
-    
-    rprint("\n[bold green]✓ All downloadable files retrieved successfully![/bold green]")
+
+    rprint(
+        "\n[bold green]✓ All downloadable files retrieved successfully![/bold green]"
+    )
     return 0
 
 
 def clean_tts_directory():
     """Clean the TTS directory before downloading fresh models.
-    
+
     Note: This only removes files, not directories, to preserve any backup files.
     """
     if TTS_DIR.exists():
@@ -188,16 +194,16 @@ def main():
     """Main entry point."""
     rprint("[bold]Voice TTS Models Download Script[/bold]")
     rprint("=" * 60)
-    
+
     rprint("\n[dim]This script downloads the main ONNX model files.[/dim]")
     rprint("[dim]Additional pkl/json files must be restored from backup.[/dim]\n")
-    
+
     # Clean the directory first
     clean_tts_directory()
-    
+
     # Download all models
     exit_code = asyncio.run(download_models())
-    
+
     if exit_code == 0:
         rprint("\n[bold green]✓ Download complete![/bold green]")
         rprint("\n[yellow]⚠ Additional required files (restore from backup):[/yellow]")
@@ -208,10 +214,10 @@ def main():
         rprint("  • idx_to_token.pkl")
         rprint(f"\n[dim]Location: {TTS_DIR.absolute()}[/dim]")
         rprint("\n[cyan]After restoring backup files, test with:[/cyan]")
-        rprint("  [cyan]voice glados \"Hello, test subject.\"[/cyan]")
+        rprint('  [cyan]voice glados "Hello, test subject."[/cyan]')
     else:
         rprint("\n[bold red]Download failed. Please check the errors above.[/bold red]")
-    
+
     return exit_code
 
 
