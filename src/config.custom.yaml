@@ -22,7 +22,7 @@ voices:
     model_path: "../models/TTS/kokoro-v1.0.fp16.onnx"
     phonemizer_path: "../models/TTS/phomenizer_en.onnx"
     voice: "af_bella"
-    speed: 1.0
+    speed: 0.5 # fast-talker
     enable_llm: false
   
   # Custom personality: Motivational coach

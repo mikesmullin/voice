@@ -37,7 +37,7 @@ voices:
     model_path: "../models/TTS/kokoro-v1.0.fp16.onnx"
     phonemizer_path: "../models/TTS/phomenizer_en.onnx"
     voice: "af_bella"  # Specific voice variant
-    speed: 1.0
+    speed: 0.5 # fast-talker
     enable_llm: false
     
   # Kokoro - Adam (male)
