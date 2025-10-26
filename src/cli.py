@@ -44,7 +44,7 @@ Examples:
   echo "only STDIN" | voice glados -
   voice --list
   voice --info glados
-  voice --config custom.yaml neutral "Custom config"
+  voice --config config.local.yaml neutral "Custom config"
         """,
     )
 

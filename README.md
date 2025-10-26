@@ -87,7 +87,7 @@ voice --info glados
 
 ### Use custom config:
 ```bash
-voice --config custom_config.yaml myvoice "Custom text"
+voice --config config.local.yaml myvoice "Custom text"
 ```
 
 ## Usage
