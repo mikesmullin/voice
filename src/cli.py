@@ -39,57 +39,107 @@ def parse_args(args: Optional[list] = None) -> argparse.Namespace:
     Returns:
         Parsed arguments
     """
-    parser = argparse.ArgumentParser(
-        prog="voice",
-        description="Text-to-speech with voice presets and LLM integration",
-        formatter_class=argparse.RawDescriptionHelpFormatter,
-        epilog="""
-Examples:
-  voice heart "Hello, test subject."
-  voice adam What is in the image?
-  voice bella Where be the treasure?
-  voice -o output.wav heart "Save to file"
-  echo "Hello from STDIN" | voice heart
-  echo "partial text" | voice heart and some more text
-  echo "only STDIN" | voice heart -
-  voice --list
-  voice --info heart
-  voice --config config.local.yaml heart "Custom config"
-        """,
-    )
-
-    parser.add_argument(
-        "preset", nargs="?", help="Voice preset name (e.g., glados, pirate, neutral)"
-    )
-
-    parser.add_argument(
-        "text",
-        nargs="*",
-        help="Text to synthesize (multiple arguments will be joined with spaces, use '-' to read only from STDIN)",
-    )
-
-    parser.add_argument(
-        "-o",
-        "--output",
-        metavar="FILE",
-        help="Save audio to file instead of playing (e.g., output.wav)",
-    )
-
-    parser.add_argument(
-        "-c", "--config", metavar="FILE", help="Path to custom config.yaml file"
-    )
-
-    parser.add_argument(
-        "-l", "--list", action="store_true", help="List available voice presets"
-    )
-
-    parser.add_argument(
-        "-i", "--info", metavar="PRESET", help="Show information about a voice preset"
-    )
-
-    parser.add_argument("-v", "--version", action="version", version="voice 0.1.0")
-
-    return parser.parse_args(args)
+    # Get args from sys.argv if not provided
+    if args is None:
+        args = sys.argv[1:]
+    
+    # Check if first argument is a known subcommand
+    # If not, treat as default synthesis mode
+    known_subcommands = ['serve', 'hot', 'help', '--help', '-h', '--version', '-v']
+    is_subcommand = len(args) > 0 and args[0] in known_subcommands
+    
+    if is_subcommand:
+        # Parse with subcommands
+        parser = argparse.ArgumentParser(
+            prog="voice",
+            description="Text-to-speech with voice presets",
+            formatter_class=argparse.RawDescriptionHelpFormatter,
+        )
+        
+        parser.add_argument("-v", "--version", action="version", version="voice 0.1.0")
+        
+        subparsers = parser.add_subparsers(dest="command", help="Command to execute")
+        
+        # Serve subcommand
+        serve_parser = subparsers.add_parser(
+            "serve",
+            help="Start voice synthesis server for low-latency hot reloading"
+        )
+        serve_parser.add_argument(
+            "-c", "--config", metavar="FILE", help="Path to custom config.yaml file"
+        )
+        serve_parser.add_argument(
+            "--host", default="127.0.0.1", help="Host to bind to (default: 127.0.0.1)"
+        )
+        serve_parser.add_argument(
+            "--port", type=int, default=3124, help="Port to bind to (default: 3124)"
+        )
+        serve_parser.add_argument(
+            "--cpu", action="store_true", help="Force CPU usage instead of GPU"
+        )
+        
+        # Hot subcommand
+        hot_parser = subparsers.add_parser(
+            "hot",
+            help="Send synthesis request to running server (low-latency)"
+        )
+        hot_parser.add_argument(
+            "preset", help="Voice preset name"
+        )
+        hot_parser.add_argument(
+            "text",
+            nargs="+",
+            help="Text to synthesize"
+        )
+        hot_parser.add_argument(
+            "-o", "--output", metavar="FILE", help="Save audio to file"
+        )
+        hot_parser.add_argument(
+            "--host", default="127.0.0.1", help="Server host (default: 127.0.0.1)"
+        )
+        hot_parser.add_argument(
+            "--port", type=int, default=3124, help="Server port (default: 3124)"
+        )
+        
+        return parser.parse_args(args)
+    else:
+        # Parse as default synthesis command
+        parser = argparse.ArgumentParser(
+            prog="voice",
+            description="Text-to-speech with voice presets",
+            formatter_class=argparse.RawDescriptionHelpFormatter,
+        )
+        parser.add_argument(
+            "preset", nargs="?", help="Voice preset name (e.g., heart, bella, adam)"
+        )
+        parser.add_argument(
+            "text",
+            nargs="*",
+            help="Text to synthesize (multiple arguments will be joined with spaces, use '-' to read only from STDIN)",
+        )
+        parser.add_argument(
+            "-o",
+            "--output",
+            metavar="FILE",
+            help="Save audio to file instead of playing (e.g., output.wav)",
+        )
+        parser.add_argument(
+            "-c", "--config", metavar="FILE", help="Path to custom config.yaml file"
+        )
+        parser.add_argument(
+            "-l", "--list", action="store_true", help="List available voice presets"
+        )
+        parser.add_argument(
+            "-i", "--info", metavar="PRESET", help="Show information about a voice preset"
+        )
+        parser.add_argument("-v", "--version", action="version", version="voice 0.1.0")
+        parser.add_argument(
+            "--cpu", action="store_true", help="Force CPU usage instead of GPU"
+        )
+        
+        parsed = parser.parse_args(args)
+        parsed.command = None  # Mark as default command
+        return parsed
 
 
 def main(args: Optional[list] = None) -> int:
@@ -102,9 +152,6 @@ def main(args: Optional[list] = None) -> int:
     Returns:
         Exit code (0 for success, 1 for error)
     """
-    # Start timing
-    start_timer()
-    
     try:
         # Check if no arguments provided, show help
         if args is None and len(sys.argv) == 1:
@@ -112,9 +159,69 @@ def main(args: Optional[list] = None) -> int:
             return 0
 
         parsed_args = parse_args(args)
+        
+        # Handle serve subcommand
+        if parsed_args.command == "serve":
+            from .server import start_server
+            start_server(
+                config_path=parsed_args.config,
+                host=parsed_args.host,
+                port=parsed_args.port,
+                force_cpu=parsed_args.cpu
+            )
+            return 0
+        
+        # Handle hot subcommand
+        if parsed_args.command == "hot":
+            from .client import send_synthesis_request
+            
+            text = " ".join(parsed_args.text) if parsed_args.text else ""
+            
+            response = send_synthesis_request(
+                voice_name=parsed_args.preset,
+                text=text,
+                output_file=getattr(parsed_args, 'output', None),
+                host=parsed_args.host,
+                port=parsed_args.port,
+                connection_timeout=0.5
+            )
+            
+            # If server connection failed (None), fall back to direct synthesis
+            if response is None:
+                from .timing import start_timer, log
+                start_timer()
+                log("[Voice] Server not available, falling back to direct synthesis...")
+                
+                engine = VoiceEngine(config_path=None, force_cpu=False)
+                
+                if not parsed_args.preset or not text:
+                    print("Error: Missing preset or text", file=sys.stderr)
+                    return 1
+                
+                try:
+                    engine.synthesize(
+                        text=text,
+                        voice_name=parsed_args.preset,
+                        output_file=getattr(parsed_args, 'output', None)
+                    )
+                    return 0
+                except Exception as e:
+                    print(f"Error: {e}", file=sys.stderr)
+                    return 1
+            
+            # Server responded with error
+            if "error" in response:
+                print(f"Error: {response['error']}", file=sys.stderr)
+                return 1
+            
+            # Success
+            return 0
 
+        # Start timing for normal synthesis
+        start_timer()
+        
         # Create voice engine with custom config if specified
-        engine = VoiceEngine(config_path=parsed_args.config)
+        engine = VoiceEngine(config_path=parsed_args.config, force_cpu=getattr(parsed_args, 'cpu', False))
 
         # Handle list command
         if parsed_args.list:
