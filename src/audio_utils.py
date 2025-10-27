@@ -116,3 +116,63 @@ def save_audio(
         output_path = output_path.rsplit('.', 1)[0] + '.wav' if '.' in output_path else output_path + '.wav'
     
     save_audio_wav(audio, sample_rate, output_path)
+
+
+def load_stinger(stinger_path: str) -> tuple[np.ndarray, int]:
+    """
+    Load a stinger audio file.
+    
+    Args:
+        stinger_path: Path to the stinger WAV file
+        
+    Returns:
+        Tuple of (audio_data, sample_rate)
+        
+    Raises:
+        FileNotFoundError: If the stinger file doesn't exist
+        ImportError: If soundfile is not installed
+    """
+    if sf is None:
+        raise ImportError("soundfile is required for loading stinger audio. Install with: pip install soundfile")
+    
+    if not os.path.exists(stinger_path):
+        raise FileNotFoundError(f"Stinger file not found: {stinger_path}")
+    
+    # Load the WAV file
+    audio_data, sample_rate = sf.read(stinger_path, dtype='float32')
+    log(f"[Voice] Loaded stinger: {stinger_path} ({len(audio_data)/sample_rate:.2f}s)")
+    
+    return audio_data, sample_rate
+
+
+def play_stinger(stinger_path: str) -> None:
+    """
+    Load and play a stinger audio file.
+    
+    Args:
+        stinger_path: Path to the stinger WAV file
+    """
+    audio_data, sample_rate = load_stinger(stinger_path)
+    
+    if sd is None:
+        raise ImportError("sounddevice is required for audio playback. Install with: pip install sounddevice")
+    
+    # Get default output device info
+    default_device = sd.default.device[1]  # Output device
+    device_info = sd.query_devices(default_device)
+    
+    log(f"[Voice] Playing stinger on: {device_info['name']}")
+    
+    try:
+        # Ensure audio is the right shape
+        if len(audio_data.shape) == 2 and audio_data.shape[1] == 1:
+            # Convert (N, 1) to (N,) - flatten
+            audio_data = audio_data.flatten()
+        
+        # Play audio and wait for completion
+        sd.play(audio_data, samplerate=sample_rate, device=default_device, blocking=True)
+        log(f"[Voice] Stinger playback complete")
+    except Exception as e:
+        print(f"Error playing stinger: {e}")
+        import traceback
+        traceback.print_exc()

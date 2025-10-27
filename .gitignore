@@ -49,3 +49,4 @@ models/TTS/*.bin
 config.local.yaml
 
 PROMPT.md
+tmp/

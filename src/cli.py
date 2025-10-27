@@ -14,7 +14,7 @@ os.environ["HF_HUB_DISABLE_PROGRESS_BARS"] = "1"
 os.environ["HF_HUB_VERBOSITY"] = "error"
 
 from .voice_engine import VoiceEngine
-from .timing import start_timer
+from . import timing
 
 
 def read_stdin() -> Optional[str]:
@@ -100,6 +100,9 @@ def parse_args(args: Optional[list] = None) -> argparse.Namespace:
         hot_parser.add_argument(
             "--port", type=int, default=3124, help="Server port (default: 3124)"
         )
+        hot_parser.add_argument(
+            "--stinger", metavar="NAME", help="Stinger sound effect to play before speech (e.g., alert, error)"
+        )
         
         return parser.parse_args(args)
     else:
@@ -135,6 +138,9 @@ def parse_args(args: Optional[list] = None) -> argparse.Namespace:
         parser.add_argument("-v", "--version", action="version", version="voice 0.1.0")
         parser.add_argument(
             "--cpu", action="store_true", help="Force CPU usage instead of GPU"
+        )
+        parser.add_argument(
+            "--stinger", metavar="NAME", help="Stinger sound effect to play before speech (e.g., alert, error)"
         )
         
         parsed = parser.parse_args(args)
@@ -183,14 +189,14 @@ def main(args: Optional[list] = None) -> int:
                 output_file=getattr(parsed_args, 'output', None),
                 host=parsed_args.host,
                 port=parsed_args.port,
-                connection_timeout=0.5
+                connection_timeout=0.5,
+                stinger=getattr(parsed_args, 'stinger', None)
             )
             
             # If server connection failed (None), fall back to direct synthesis
             if response is None:
-                from .timing import start_timer, log
-                start_timer()
-                log("[Voice] Server not available, falling back to direct synthesis...")
+                timing.start_timer()
+                timing.log("[Voice] Server not available, falling back to direct synthesis...")
                 
                 engine = VoiceEngine(config_path=None, force_cpu=False)
                 
@@ -202,7 +208,8 @@ def main(args: Optional[list] = None) -> int:
                     engine.synthesize(
                         text=text,
                         voice_name=parsed_args.preset,
-                        output_file=getattr(parsed_args, 'output', None)
+                        output_file=getattr(parsed_args, 'output', None),
+                        stinger=getattr(parsed_args, 'stinger', None)
                     )
                     return 0
                 except Exception as e:
@@ -218,7 +225,7 @@ def main(args: Optional[list] = None) -> int:
             return 0
 
         # Start timing for normal synthesis
-        start_timer()
+        timing.start_timer()
         
         # Create voice engine with custom config if specified
         engine = VoiceEngine(config_path=parsed_args.config, force_cpu=getattr(parsed_args, 'cpu', False))
@@ -299,6 +306,7 @@ def main(args: Optional[list] = None) -> int:
             text=final_text,
             voice_name=parsed_args.preset,
             output_file=parsed_args.output,
+            stinger=getattr(parsed_args, 'stinger', None)
         )
 
         return 0

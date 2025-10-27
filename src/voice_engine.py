@@ -76,7 +76,7 @@ class VoiceEngine:
         filler = random.choice(fillers)
         return f"{filler} {text}"
     
-    def synthesize(self, text: str, voice_name: str, output_file: Optional[str] = None) -> None:
+    def synthesize(self, text: str, voice_name: str, output_file: Optional[str] = None, stinger: Optional[str] = None) -> None:
         from .timing import get_elapsed
         
         self._initialize_pipeline()
@@ -92,6 +92,32 @@ class VoiceEngine:
         voice_config = voices[voice_name]
         voice_id = voice_config.get("voice")
         speed = voice_config.get("speed", 1.0)
+        
+        # Resolve and load stinger early (but don't play yet)
+        stinger_audio_data = None
+        stinger_sample_rate = None
+        if stinger or voice_config.get("default_stinger"):
+            # Use CLI-provided stinger if available, otherwise use default_stinger from config
+            stinger_name = stinger or voice_config.get("default_stinger")
+            stingers = voice_config.get("stingers", {})
+            
+            if stinger_name in stingers:
+                # Resolve path relative to project root (parent of config directory)
+                config_dir = Path(self.config_path).parent
+                project_root = config_dir.parent  # Go up one level from src/
+                stinger_path = project_root / stingers[stinger_name]
+                log(f"[Voice] Stinger '{stinger_name}' resolved to: {stinger_path}")
+                
+                # Load stinger now (but don't play yet) if not saving to file
+                if not output_file:
+                    try:
+                        from .audio_utils import load_stinger
+                        stinger_audio_data, stinger_sample_rate = load_stinger(str(stinger_path))
+                    except Exception as e:
+                        log(f"[Voice] Warning: Could not load stinger: {e}")
+            elif stinger:
+                # CLI provided a stinger name that doesn't exist in config - no-op (ignore)
+                log(f"[Voice] Stinger '{stinger_name}' not found in config, ignoring")
         
         # Check if we need to load a different voice
         if voice_id != self.last_voice_id:
@@ -136,6 +162,26 @@ class VoiceEngine:
             audio_format = audio_config.get("format", "wav")
             save_audio(audio_data, sample_rate, output_file, audio_format)
         else:
+            # Play stinger right before playing synthesized audio
+            if stinger_audio_data is not None:
+                import sounddevice as sd
+                default_device = sd.default.device[1]  # Output device
+                device_info = sd.query_devices(default_device)
+                
+                log(f"[Voice] Playing stinger on: {device_info['name']}")
+                
+                try:
+                    # Ensure audio is the right shape
+                    if len(stinger_audio_data.shape) == 2 and stinger_audio_data.shape[1] == 1:
+                        stinger_audio_data = stinger_audio_data.flatten()
+                    
+                    # Play stinger and wait for completion
+                    sd.play(stinger_audio_data, samplerate=stinger_sample_rate, device=default_device, blocking=True)
+                    log(f"[Voice] Stinger playback complete")
+                except Exception as e:
+                    log(f"[Voice] Warning: Could not play stinger: {e}")
+            
+            # Now play the synthesized audio
             if audio_config.get("auto_play", True):
                 play_audio(audio_data, sample_rate, speed)
     

@@ -22,6 +22,13 @@ voices:
   ada:
     voice: "af_aoede"
     speed: 1.5
+    # Stinger sound effects (optional)
+    # Paths are relative to the project root
+    stingers:
+      alert: tmp/alert.wav
+      error: tmp/error.wav
+    # Default stinger to play when none specified via CLI
+    default_stinger: alert
   
   kore:
     voice: "af_kore"

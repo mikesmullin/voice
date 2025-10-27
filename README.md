@@ -5,11 +5,12 @@ A simple, fast text-to-speech (TTS) CLI using Kokoro with 28 English voice prese
 ## Features
 
 - 🎭 **28 Voice Presets**: 20 American + 8 British English voices from Kokoro
-- � **Server Mode**: Pre-load model for near-instant synthesis (<0.2s)
-- �🖥️ **Cross-Platform**: Windows, macOS, and Linux
+- 🔥 **Server Mode**: Pre-load model for near-instant synthesis (<0.2s)
+- 🖥️ **Cross-Platform**: Windows, macOS, and Linux
 - ⚡ **GPU Accelerated**: CUDA support for NVIDIA GPUs (10-20x realtime)
 - 🔒 **Privacy-First**: All processing happens locally, no cloud required
 - 🎵 **WAV Output**: Play audio or save to file
+- 🔔 **Stinger Support**: Optional sound effects before speech (alerts, notifications, etc.)
 
 ## Installation
 
@@ -107,6 +108,7 @@ voice hot <preset> <text> [options]  # Send to server
 ```
   -o FILE, --output FILE    Save audio to WAV file
   -c FILE, --config FILE    Use custom config file
+  --stinger NAME            Play stinger sound before speech
   --cpu                     Force CPU (disable GPU)
   -l, --list                List available voice presets
   -i PRESET, --info PRESET  Show preset information
@@ -142,6 +144,19 @@ voice --config my-config.yaml myvoice "Custom voice"
 ```bash
 voice heart "Use CPU" --cpu
 voice serve --cpu
+```
+
+**Stinger sound effects:**
+```bash
+# Use default stinger (if configured for preset)
+voice ada "Important message"
+
+# Override with specific stinger
+voice ada "Error occurred" --stinger error
+voice ada "Alert notification" --stinger alert
+
+# Works in server mode too
+voice hot ada "Server notification" --stinger alert
 ```
 
 ## Available Voices
@@ -180,7 +195,12 @@ voices:
   
   ada:
     voice: "af_aoede"
-    speed: 0.5  # Custom slower speed
+    speed: 1.5
+    # Optional stinger sound effects
+    stingers:
+      alert: tmp/alert.wav
+      error: tmp/error.wav
+    default_stinger: alert  # Play automatically unless overridden
 ```
 
 ### Custom Configuration
@@ -198,6 +218,47 @@ Use it with:
 ```bash
 voice --config my-config.yaml my_voice "Hello"
 ```
+
+### Stinger Configuration
+
+Stingers are short sound effects played before speech synthesis. They're useful for:
+- **Alerts and notifications**: Get attention before speaking
+- **Error messages**: Distinct sound for error notifications
+- **Status indicators**: Different sounds for different message types
+
+**Configuration:**
+
+1. **Define stingers per-preset** in `config.yaml`:
+   ```yaml
+   voices:
+     ada:
+       voice: "af_aoede"
+       speed: 1.5
+       stingers:
+         alert: tmp/alert.wav      # Path relative to project root
+         error: tmp/error.wav
+         success: tmp/success.wav
+       default_stinger: alert      # Optional: auto-play this stinger
+   ```
+
+2. **Use via CLI**:
+   ```bash
+   # Use default stinger (if configured)
+   voice ada "Message"
+   
+   # Override with specific stinger
+   voice ada "Error message" --stinger error
+   
+   # No stinger (even if default configured)
+   voice ada "Message" --stinger none
+   ```
+
+**Notes:**
+- Stingers are only played during audio playback (not when saving to file with `-o`)
+- The `--stinger` parameter is only available for direct synthesis and `hot` mode (not `serve`)
+- Stinger files must be WAV format
+- If a stinger name doesn't exist in the config, it's silently ignored (no-op)
+- Stinger audio is loaded early but played right before synthesized speech for optimal timing
 
 ## Performance
 
