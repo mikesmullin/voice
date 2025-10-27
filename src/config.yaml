@@ -19,6 +19,10 @@ voices:
     voice: "af_aoede"
     speed: 1.0
   
+  ada:
+    voice: "af_aoede"
+    speed: 1.5
+  
   kore:
     voice: "af_kore"
     speed: 1.0

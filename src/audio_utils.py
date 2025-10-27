@@ -20,13 +20,14 @@ except ImportError:
 # Removed pydub dependency - only supporting WAV format
 
 
-def play_audio(audio: np.ndarray, sample_rate: int) -> None:
+def play_audio(audio: np.ndarray, sample_rate: int, speed: float = 1.0) -> None:
     """
     Play audio through the default audio device.
     
     Args:
         audio: Audio data as numpy array (float32, range -1.0 to 1.0)
         sample_rate: Sample rate in Hz
+        speed: Playback speed multiplier (affects initialization delay)
     """
     if sd is None:
         raise ImportError("sounddevice is required for audio playback. Install with: pip install sounddevice")

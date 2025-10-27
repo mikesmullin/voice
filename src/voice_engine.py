@@ -3,6 +3,7 @@
 import os
 import warnings
 import logging
+import random
 from pathlib import Path
 from typing import Optional
 import yaml
@@ -49,6 +50,16 @@ class VoiceEngine:
         if self.pipeline is None:
             self.pipeline = KPipeline(lang_code='a', repo_id='hexgrad/Kokoro-82M')  # English
     
+    def _add_filler_prefix(self, text: str) -> str:
+        """Add a random filler word prefix to ease into speech naturally."""
+        fillers = [
+            #"Um,", "Well,", "Uh,", "So,", "Like,", 
+            #"You know,", "Hmm,", "Okay,", "Alright,", "Er,"
+            "... ... "
+        ]
+        filler = random.choice(fillers)
+        return f"{filler} {text}"
+    
     def synthesize(self, text: str, voice_name: str, output_file: Optional[str] = None) -> None:
         self._initialize_pipeline()
         
@@ -64,10 +75,13 @@ class VoiceEngine:
         voice_id = voice_config.get("voice")
         speed = voice_config.get("speed", 1.0)
         
+        # Add filler prefix to prevent clipping
+        prefixed_text = self._add_filler_prefix(text)
+        
         log(f"[Kokoro TTS] Generating speech with voice '{voice_name}' ({voice_id})...")
         
         # Generate speech using Kokoro
-        audio_generator = self.pipeline(text, voice=voice_id, speed=speed)
+        audio_generator = self.pipeline(prefixed_text, voice=voice_id, speed=speed)
         
         # Collect audio chunks
         audio_chunks = []
@@ -89,7 +103,7 @@ class VoiceEngine:
             save_audio(audio_data, sample_rate, output_file, audio_format)
         else:
             if audio_config.get("auto_play", True):
-                play_audio(audio_data, sample_rate)
+                play_audio(audio_data, sample_rate, speed)
     
     def list_voices(self) -> list:
         voices = self.config.get("voices", {})
