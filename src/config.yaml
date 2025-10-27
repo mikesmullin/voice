@@ -22,6 +22,12 @@ voices:
   ada:
     voice: "af_aoede"
     speed: 1.5
+  
+  adjutant:
+    model: "styletts2"
+    speed: 1.0
+    # StyleTTS2 specific configuration
+    reference_audio: tmp/sc2-adjutant.wav  # Reference audio for zero-shot voice cloning
     # Stinger sound effects (optional)
     # Paths are relative to the project root
     stingers:
@@ -29,7 +35,7 @@ voices:
       error: tmp/error.wav
     # Default stinger to play when none specified via CLI
     default_stinger: alert
-  
+
   kore:
     voice: "af_kore"
     speed: 1.0

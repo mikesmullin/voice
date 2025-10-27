@@ -25,9 +25,12 @@ class VoiceServer:
         start_timer()
         log("[Server] Initializing voice engine...")
         
-        # Pre-initialize the pipeline to load model onto GPU
-        self.engine._initialize_pipeline()
-        log("[Server] Model loaded and ready")
+        # Pre-initialize the Kokoro pipeline to load model onto GPU
+        # (Server is optimized for low-latency Kokoro voices)
+        from .kokoro_engine import KokoroEngine
+        kokoro = KokoroEngine(force_cpu=self.engine.force_cpu)
+        kokoro._initialize_pipeline()
+        log("[Server] Kokoro model loaded and ready")
         
         # Create TCP socket
         self.socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
