@@ -1,87 +1,117 @@
 # Voice Configuration File
-# Define voice presets with their TTS engines and optional LLM transformations
+# Simple voice presets for Kokoro TTS
 
-# LLM Configuration (optional, used for text transformation)
-llm:
-  backend: "ollama"  # "ollama" or "none"
-  model: "llama3.2"
-  api_url: "http://localhost:11434/api/chat"
-  timeout: 30  # seconds
-
-# Audio output settings
-audio:
-  sample_rate: 22050
-  format: "ogg"  # Output format when saving to file
-  auto_play: true  # Play audio by default (unless -o is specified)
-
-# Voice presets
 voices:
-  # GLaDOS voice - sarcastic AI from Portal
-  glados:
-    tts_engine: "glados"  # Uses GLaDOS ONNX model
-    model_path: "../models/TTS/glados.onnx"
-    phonemizer_path: "../models/TTS/phomenizer_en.onnx"
-    speed: 1.0
-    enable_llm: true
-    system_prompt: |
-      You are GLaDOS, a sarcastic and cunning artificial intelligence. 
-      Transform the user's text to match your signature dry, emotionless, and laconic tone from Portal.
-      Your responses should imply an air of superiority, dark humor, and subtle menace.
-      Add condescending, darkly humorous commentary while keeping the core message.
-      Keep responses concise - 2-3 sentences maximum.
-      Never use ALL CAPS as it breaks the TTS engine.
-    
-  # Kokoro multi-voice support - Bella (female)
+  # American English Voices
   bella:
-    tts_engine: "kokoro"
-    model_path: "../models/TTS/kokoro-v1.0.fp16.onnx"
-    phonemizer_path: "../models/TTS/phomenizer_en.onnx"
-    voice: "af_bella"  # Specific voice variant
-    speed: 0.5 # fast-talker
-    enable_llm: false
-    
-  # Kokoro - Adam (male)
-  adam:
-    tts_engine: "kokoro"
-    model_path: "../models/TTS/kokoro-v1.0.fp16.onnx"
-    phonemizer_path: "../models/TTS/phomenizer_en.onnx"
-    voice: "am_adam"
-    speed: 1.0
-    enable_llm: false
-  
-  # Custom personality: Motivational coach
-  coach:
-    tts_engine: "kokoro"
-    model_path: "../models/TTS/kokoro-v1.0.fp16.onnx"
-    phonemizer_path: "../models/TTS/phomenizer_en.onnx"
-    voice: "am_adam"
-    speed: 1.05
-    enable_llm: true
-    system_prompt: |
-      You are an enthusiastic motivational coach.
-      Transform the user's text into an inspiring, energetic message.
-      Use phrases like "You've got this!", "Believe in yourself!", etc.
-      Keep it short, punchy, and motivating - 2 sentences max.
-      
-  # Custom personality: Shakespeare
-  shakespeare:
-    tts_engine: "kokoro"
-    model_path: "../models/TTS/kokoro-v1.0.fp16.onnx"
-    phonemizer_path: "../models/TTS/phomenizer_en.onnx"
-    voice: "am_michael"
-    speed: 0.9
-    enable_llm: true
-    system_prompt: |
-      You are William Shakespeare.
-      Transform the user's text into Elizabethan English with poetic flair.
-      Use "thee", "thou", "thy", etc. Add metaphors and dramatic language.
-      Keep it concise but theatrical - 2-3 sentences.
-    
-  # Neutral voice - no personality, direct TTS
-  neutral:
-    tts_engine: "kokoro"
-    model_path: "../models/TTS/kokoro-v1.0.fp16.onnx"
-    phonemizer_path: "../models/TTS/phomenizer_en.onnx"
     voice: "af_bella"
     speed: 1.0
-    enable_llm: false
+  
+  nicole:
+    voice: "af_nicole"
+    speed: 1.0
+  
+  alloy:
+    voice: "af_alloy"
+    speed: 1.0
+  
+  aoede:
+    voice: "af_aoede"
+    speed: 1.0
+  
+  kore:
+    voice: "af_kore"
+    speed: 1.0
+  
+  sarah:
+    voice: "af_sarah"
+    speed: 1.0
+  
+  nova:
+    voice: "af_nova"
+    speed: 1.0
+  
+  jessica:
+    voice: "af_jessica"
+    speed: 1.0
+  
+  river:
+    voice: "af_river"
+    speed: 1.0
+  
+  sky:
+    voice: "af_sky"
+    speed: 1.0
+  
+  heart:
+    voice: "af_heart"
+    speed: 1.0
+  
+  fenrir:
+    voice: "am_fenrir"
+    speed: 1.0
+  
+  michael:
+    voice: "am_michael"
+    speed: 1.0
+  
+  puck:
+    voice: "am_puck"
+    speed: 1.0
+  
+  echo:
+    voice: "am_echo"
+    speed: 1.0
+  
+  eric:
+    voice: "am_eric"
+    speed: 1.0
+  
+  liam:
+    voice: "am_liam"
+    speed: 1.0
+  
+  onyx:
+    voice: "am_onyx"
+    speed: 1.0
+  
+  santa:
+    voice: "am_santa"
+    speed: 1.0
+  
+  adam:
+    voice: "am_adam"
+    speed: 1.0
+  
+  # British English Voices
+  emma:
+    voice: "bf_emma"
+    speed: 1.0
+  
+  isabella:
+    voice: "bf_isabella"
+    speed: 1.0
+  
+  fable:
+    voice: "bm_fable"
+    speed: 1.0
+  
+  george:
+    voice: "bm_george"
+    speed: 1.0
+  
+  lewis:
+    voice: "bm_lewis"
+    speed: 1.0
+  
+  alice:
+    voice: "bf_alice"
+    speed: 1.0
+  
+  lily:
+    voice: "bf_lily"
+    speed: 1.0
+  
+  daniel:
+    voice: "bm_daniel"
+    speed: 1.0

@@ -1,11 +1,11 @@
 """Audio utilities for playback and file saving."""
 
 import os
-from pathlib import Path
 from typing import Optional
 import numpy as np
 import time
-import warnings
+
+from .timing import log
 
 try:
     import soundfile as sf
@@ -17,13 +17,7 @@ try:
 except ImportError:
     sd = None
 
-try:
-    # Suppress pydub's ffmpeg warning since we use soundfile for WAV output
-    with warnings.catch_warnings():
-        warnings.filterwarnings("ignore", message=".*Couldn't find ffmpeg.*")
-        from pydub import AudioSegment
-except ImportError:
-    AudioSegment = None
+# Removed pydub dependency - only supporting WAV format
 
 
 def play_audio(audio: np.ndarray, sample_rate: int) -> None:
@@ -41,8 +35,8 @@ def play_audio(audio: np.ndarray, sample_rate: int) -> None:
     default_device = sd.default.device[1]  # Output device
     device_info = sd.query_devices(default_device)
     
-    print(f"[Audio] Playing audio ({len(audio)/sample_rate:.2f}s) on: {device_info['name']}")
-    print(f"[Audio] Audio shape: {audio.shape}, dtype: {audio.dtype}, range: [{audio.min():.3f}, {audio.max():.3f}]")
+    log(f"[Voice] Playing audio ({len(audio)/sample_rate:.2f}s) on: {device_info['name']}")
+    log(f"[Voice] Audio shape: {audio.shape}, dtype: {audio.dtype}, range: [{audio.min():.3f}, {audio.max():.3f}]")
     
     try:
         # Ensure audio is the right shape and type
@@ -63,7 +57,7 @@ def play_audio(audio: np.ndarray, sample_rate: int) -> None:
         
         # Now wait for completion
         sd.wait()
-        print(f"[Audio] Playback complete")
+        log(f"[Voice] Playback complete")
     except Exception as e:
         print(f"Error playing audio: {e}")
         import traceback
@@ -89,87 +83,11 @@ def save_audio_wav(audio: np.ndarray, sample_rate: int, output_path: str) -> Non
     
     # Save as WAV
     sf.write(output_path, audio, sample_rate)
-    print(f"[Audio] Saved to: {output_path}")
+    log(f"[Voice] Saved to: {output_path}")
 
 
-def append_audio_wav(audio: np.ndarray, sample_rate: int, output_path: str) -> None:
-    """
-    Append audio to an existing WAV file, or create new file if it doesn't exist.
-    
-    Args:
-        audio: Audio data as numpy array
-        sample_rate: Sample rate in Hz
-        output_path: Output file path
-    """
-    if sf is None:
-        raise ImportError("soundfile is required for saving audio. Install with: pip install soundfile")
-    
-    # Ensure output directory exists
-    output_dir = os.path.dirname(output_path)
-    if output_dir:
-        os.makedirs(output_dir, exist_ok=True)
-    
-    # Check if file exists
-    if os.path.exists(output_path):
-        # Read existing audio
-        existing_audio, existing_rate = sf.read(output_path)
-        
-        # Verify sample rate matches
-        if existing_rate != sample_rate:
-            raise ValueError(
-                f"Sample rate mismatch: existing file has {existing_rate} Hz, "
-                f"new audio has {sample_rate} Hz"
-            )
-        
-        # Concatenate audio
-        combined_audio = np.concatenate([existing_audio, audio])
-        
-        # Write combined audio
-        sf.write(output_path, combined_audio, sample_rate)
-        print(f"[Audio] Appended {len(audio)/sample_rate:.2f}s to: {output_path}")
-    else:
-        # File doesn't exist, create new file
-        sf.write(output_path, audio, sample_rate)
-        print(f"[Audio] Created new file: {output_path}")
-
-
-def save_audio_ogg(audio: np.ndarray, sample_rate: int, output_path: str) -> None:
-    """
-    Save audio to OGG file.
-    
-    Args:
-        audio: Audio data as numpy array
-        sample_rate: Sample rate in Hz
-        output_path: Output file path
-    """
-    if sf is None:
-        raise ImportError("soundfile is required for saving audio. Install with: pip install soundfile")
-    
-    if AudioSegment is None:
-        raise ImportError("pydub is required for OGG conversion. Install with: pip install pydub")
-    
-    # Ensure output directory exists
-    output_dir = os.path.dirname(output_path)
-    if output_dir:
-        os.makedirs(output_dir, exist_ok=True)
-    
-    # First save as temporary WAV
-    temp_wav = output_path.rsplit('.', 1)[0] + '_temp.wav'
-    
-    try:
-        # Save as WAV first
-        sf.write(temp_wav, audio, sample_rate)
-        
-        # Convert to OGG
-        audio_segment = AudioSegment.from_wav(temp_wav)
-        audio_segment.export(output_path, format="ogg")
-        
-        print(f"[Audio] Saved to: {output_path}")
-        
-    finally:
-        # Clean up temporary WAV file
-        if os.path.exists(temp_wav):
-            os.remove(temp_wav)
+# Removed OGG support to avoid ffmpeg dependency
+# Removed append_audio_wav function (unused)
 
 
 def save_audio(
@@ -179,27 +97,21 @@ def save_audio(
     format: Optional[str] = None
 ) -> None:
     """
-    Save audio to file with automatic format detection.
+    Save audio to file as WAV format.
     
     Args:
         audio: Audio data as numpy array
         sample_rate: Sample rate in Hz
         output_path: Output file path
-        format: Output format ('wav', 'ogg', or None for auto-detect from extension)
+        format: Output format (only 'wav' is supported)
     """
-    # Determine format from extension if not specified
-    if format is None:
-        ext = Path(output_path).suffix.lower()
-        format = ext[1:] if ext else 'wav'
+    # Force WAV format regardless of extension
+    if format and format.lower() != 'wav':
+        print(f"Warning: Only WAV format is supported, ignoring format '{format}'")
     
-    format = format.lower()
+    # If output path has a different extension, warn and change to .wav
+    if not output_path.lower().endswith('.wav'):
+        print(f"Warning: Changing output extension to .wav")
+        output_path = output_path.rsplit('.', 1)[0] + '.wav' if '.' in output_path else output_path + '.wav'
     
-    # Save based on format
-    if format == 'ogg':
-        save_audio_ogg(audio, sample_rate, output_path)
-    elif format == 'wav':
-        save_audio_wav(audio, sample_rate, output_path)
-    else:
-        # Default to WAV for unknown formats
-        print(f"Warning: Unknown format '{format}', saving as WAV")
-        save_audio_wav(audio, sample_rate, output_path)
+    save_audio_wav(audio, sample_rate, output_path)

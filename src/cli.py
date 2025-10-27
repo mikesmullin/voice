@@ -2,9 +2,19 @@
 
 import sys
 import argparse
+import warnings
+import os
 from typing import Optional
 
+# Suppress warnings for cleaner output
+warnings.filterwarnings("ignore")
+os.environ["PYTHONWARNINGS"] = "ignore"
+os.environ["HF_HUB_DISABLE_SYMLINKS_WARNING"] = "1"
+os.environ["HF_HUB_DISABLE_PROGRESS_BARS"] = "1"
+os.environ["HF_HUB_VERBOSITY"] = "error"
+
 from .voice_engine import VoiceEngine
+from .timing import start_timer
 
 
 def read_stdin() -> Optional[str]:
@@ -35,16 +45,16 @@ def parse_args(args: Optional[list] = None) -> argparse.Namespace:
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
 Examples:
-  voice glados "Hello, test subject."
+  voice heart "Hello, test subject."
   voice adam What is in the image?
-  voice pirate Where be the treasure?
-  voice -o output.ogg glados "Save to file"
-  echo "Hello from STDIN" | voice glados
-  echo "partial text" | voice glados and some more text
-  echo "only STDIN" | voice glados -
+  voice bella Where be the treasure?
+  voice -o output.wav heart "Save to file"
+  echo "Hello from STDIN" | voice heart
+  echo "partial text" | voice heart and some more text
+  echo "only STDIN" | voice heart -
   voice --list
-  voice --info glados
-  voice --config config.local.yaml neutral "Custom config"
+  voice --info heart
+  voice --config config.local.yaml heart "Custom config"
         """,
     )
 
@@ -62,7 +72,7 @@ Examples:
         "-o",
         "--output",
         metavar="FILE",
-        help="Save audio to file instead of playing (e.g., output.ogg)",
+        help="Save audio to file instead of playing (e.g., output.wav)",
     )
 
     parser.add_argument(
@@ -79,12 +89,6 @@ Examples:
 
     parser.add_argument("-v", "--version", action="version", version="voice 0.1.0")
 
-    parser.add_argument(
-        "--no-transform",
-        action="store_true",
-        help="Skip LLM text transformation and use input text verbatim",
-    )
-
     return parser.parse_args(args)
 
 
@@ -98,6 +102,9 @@ def main(args: Optional[list] = None) -> int:
     Returns:
         Exit code (0 for success, 1 for error)
     """
+    # Start timing
+    start_timer()
+    
     try:
         # Check if no arguments provided, show help
         if args is None and len(sys.argv) == 1:
@@ -185,11 +192,7 @@ def main(args: Optional[list] = None) -> int:
             text=final_text,
             voice_name=parsed_args.preset,
             output_file=parsed_args.output,
-            skip_llm=parsed_args.no_transform,
         )
-
-        # Clean up
-        engine.cleanup()
 
         return 0
 

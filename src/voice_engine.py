@@ -1,38 +1,42 @@
-"""Core voice engine that orchestrates TTS, LLM, and audio output."""
+"""Simple voice engine using Kokoro TTS library."""
 
 import os
+import warnings
+import logging
 from pathlib import Path
-from typing import Optional, Dict, Any
+from typing import Optional
 import yaml
 
-from .text_processor import TextProcessor, create_processor_from_config
-from .tts import TTSEngine
-from .tts.glados_tts import GladosTTSEngine
-from .tts.kokoro_tts import KokoroTTSEngine
-from .audio_utils import play_audio, save_audio, append_audio_wav
+# Suppress warnings for cleaner output
+warnings.filterwarnings("ignore")
+os.environ["HF_HUB_DISABLE_SYMLINKS_WARNING"] = "1"
+os.environ["HF_HUB_DISABLE_PROGRESS_BARS"] = "1"
+os.environ["HF_HUB_VERBOSITY"] = "error"
+
+# Suppress huggingface_hub logging
+logging.getLogger("huggingface_hub").setLevel(logging.ERROR)
+
+try:
+    from kokoro import KPipeline
+except ImportError:
+    raise ImportError("kokoro package not installed. Install with: pip install kokoro")
+
+from .audio_utils import play_audio, save_audio
+from .timing import log
 
 
 class VoiceEngine:
-    """Main voice engine coordinating all components."""
+    """Main voice engine using Kokoro TTS."""
     
     def __init__(self, config_path: Optional[str] = None):
-        """
-        Initialize voice engine.
-        
-        Args:
-            config_path: Path to config.yaml file. If None, uses default config.
-        """
         self.config_path = config_path or self._get_default_config_path()
         self.config = self._load_config()
-        self.text_processor = create_processor_from_config(self.config)
-        self.tts_engines: Dict[str, TTSEngine] = {}
+        self.pipeline = None
         
     def _get_default_config_path(self) -> str:
-        """Get the default config path."""
         return str(Path(__file__).parent / "config.yaml")
     
     def _load_config(self) -> dict:
-        """Load configuration from YAML file."""
         if not os.path.exists(self.config_path):
             raise FileNotFoundError(f"Config file not found: {self.config_path}")
         
@@ -41,72 +45,13 @@ class VoiceEngine:
         
         return config
     
-    def _resolve_path(self, path: str) -> str:
-        """Resolve relative paths relative to config file location."""
-        if os.path.isabs(path):
-            return path
-        
-        # Resolve relative to config file directory
-        config_dir = Path(self.config_path).parent
-        resolved = config_dir / path
-        return str(resolved.resolve())
+    def _initialize_pipeline(self) -> None:
+        if self.pipeline is None:
+            self.pipeline = KPipeline(lang_code='a', repo_id='hexgrad/Kokoro-82M')  # English
     
-    def _create_tts_engine(self, voice_name: str, voice_config: dict) -> TTSEngine:
-        """
-        Create a TTS engine based on voice configuration.
+    def synthesize(self, text: str, voice_name: str, output_file: Optional[str] = None) -> None:
+        self._initialize_pipeline()
         
-        Args:
-            voice_name: Name of the voice preset
-            voice_config: Voice configuration dictionary
-            
-        Returns:
-            Initialized TTSEngine instance
-        """
-        engine_type = voice_config.get("tts_engine", "").lower()
-        
-        if engine_type == "glados":
-            model_path = self._resolve_path(voice_config["model_path"])
-            phonemizer_path = voice_config.get("phonemizer_path")
-            if phonemizer_path:
-                phonemizer_path = self._resolve_path(phonemizer_path)
-            
-            speed = voice_config.get("speed", 1.0)
-            engine = GladosTTSEngine(model_path, phonemizer_path, speed)
-            
-        elif engine_type == "kokoro":
-            model_path = self._resolve_path(voice_config["model_path"])
-            phonemizer_path = voice_config.get("phonemizer_path")
-            if phonemizer_path:
-                phonemizer_path = self._resolve_path(phonemizer_path)
-            
-            voice = voice_config.get("voice", "af_bella")
-            speed = voice_config.get("speed", 1.0)
-            
-            engine = KokoroTTSEngine(model_path, phonemizer_path, voice, speed)
-            
-        else:
-            raise ValueError(f"Unknown TTS engine type: {engine_type}")
-        
-        # Initialize the engine
-        engine.initialize()
-        
-        return engine
-    
-    def _get_or_create_engine(self, voice_name: str) -> TTSEngine:
-        """
-        Get cached TTS engine or create a new one.
-        
-        Args:
-            voice_name: Name of the voice preset
-            
-        Returns:
-            TTSEngine instance
-        """
-        # Check if engine is already cached
-        if voice_name in self.tts_engines:
-            return self.tts_engines[voice_name]
-        
-        # Get voice config
         voices = self.config.get("voices", {})
         if voice_name not in voices:
             available = ", ".join(voices.keys())
@@ -116,131 +61,43 @@ class VoiceEngine:
             )
         
         voice_config = voices[voice_name]
+        voice_id = voice_config.get("voice")
+        speed = voice_config.get("speed", 1.0)
         
-        # Create and cache engine
-        engine = self._create_tts_engine(voice_name, voice_config)
-        self.tts_engines[voice_name] = engine
+        log(f"[Kokoro TTS] Generating speech with voice '{voice_name}' ({voice_id})...")
         
-        return engine
-    
-    def synthesize(
-        self,
-        text: str,
-        voice_name: str,
-        output_file: Optional[str] = None,
-        skip_llm: bool = False
-    ) -> None:
-        """
-        Synthesize speech from text using specified voice.
+        # Generate speech using Kokoro
+        audio_generator = self.pipeline(text, voice=voice_id, speed=speed)
         
-        Args:
-            text: Input text to synthesize
-            voice_name: Name of the voice preset to use
-            output_file: Optional output file path. If None, plays audio.
-            skip_llm: If True, skip LLM text transformation (use text verbatim)
-        """
-        # Get voice configuration
-        voices = self.config.get("voices", {})
-        if voice_name not in voices:
-            available = ", ".join(voices.keys())
-            raise ValueError(
-                f"Voice preset '{voice_name}' not found. Available: {available}"
-            )
+        # Collect audio chunks
+        audio_chunks = []
+        for i, (gs, ps, audio) in enumerate(audio_generator):
+            audio_chunks.append(audio)
         
-        voice_config = voices[voice_name]
+        if not audio_chunks:
+            raise RuntimeError("No audio generated")
         
-        # Process text with LLM if enabled (unless skip_llm is True)
-        enable_llm = voice_config.get("enable_llm", False) and not skip_llm
-        system_prompt = voice_config.get("system_prompt")
+        # Concatenate audio chunks
+        import numpy as np
+        audio_data = np.concatenate(audio_chunks)
+        sample_rate = 24000  # Kokoro uses 24kHz
         
-        if enable_llm and system_prompt:
-            processed_text = self.text_processor.process(text, system_prompt)
-        else:
-            processed_text = text
-        
-        # Get or create TTS engine
-        engine = self._get_or_create_engine(voice_name)
-        
-        # Check if engine supports streaming (currently only Kokoro)
-        has_streaming = hasattr(engine, 'synthesize_streaming')
-        
-        # Synthesize speech
-        print(f"[Voice Engine] Synthesizing with voice: {voice_name}")
-        
-        # Output audio
         audio_config = self.config.get("audio", {})
-        sample_rate = engine.get_sample_rate()
         
         if output_file:
-            # Save to file with streaming for WAV format
-            output_format = Path(output_file).suffix.lower()[1:] if Path(output_file).suffix else 'wav'
-            
-            if output_format == 'wav' and has_streaming:
-                # Stream directly to WAV file (memory efficient)
-                print(f"[Voice Engine] Streaming to file: {output_file}")
-                
-                # Delete existing file if present
-                if os.path.exists(output_file):
-                    os.remove(output_file)
-                
-                for chunk in engine.synthesize_streaming(processed_text):
-                    append_audio_wav(chunk, sample_rate, output_file)
-            else:
-                # Non-WAV format or engine doesn't support streaming
-                # Need to synthesize all at once
-                audio_data = engine.synthesize(processed_text)
-                save_audio(audio_data, sample_rate, output_file, format=None)
+            audio_format = audio_config.get("format", "wav")
+            save_audio(audio_data, sample_rate, output_file, audio_format)
         else:
-            # Play audio with streaming if available
-            auto_play = audio_config.get("auto_play", True)
-            if auto_play:
-                if has_streaming:
-                    # Stream and play each chunk immediately (memory efficient)
-                    print(f"[Voice Engine] Streaming playback")
-                    for chunk in engine.synthesize_streaming(processed_text):
-                        play_audio(chunk, sample_rate)
-                else:
-                    # Synthesize all at once
-                    audio_data = engine.synthesize(processed_text)
-                    play_audio(audio_data, sample_rate)
-            else:
-                print("[Voice Engine] Audio generated but auto_play is disabled")
-                # Still need to generate even if not playing
-                if has_streaming:
-                    # Consume the generator
-                    for _ in engine.synthesize_streaming(processed_text):
-                        pass
-                else:
-                    engine.synthesize(processed_text)
+            if audio_config.get("auto_play", True):
+                play_audio(audio_data, sample_rate)
     
     def list_voices(self) -> list:
-        """
-        Get list of available voice presets.
-        
-        Returns:
-            List of voice preset names
-        """
         voices = self.config.get("voices", {})
-        return list(voices.keys())
+        return sorted(voices.keys())
     
     def get_voice_info(self, voice_name: str) -> dict:
-        """
-        Get information about a specific voice preset.
-        
-        Args:
-            voice_name: Name of the voice preset
-            
-        Returns:
-            Voice configuration dictionary
-        """
         voices = self.config.get("voices", {})
         if voice_name not in voices:
-            raise ValueError(f"Voice preset '{voice_name}' not found")
+            raise ValueError(f"Voice '{voice_name}' not found")
         
         return voices[voice_name]
-    
-    def cleanup(self) -> None:
-        """Clean up all TTS engines."""
-        for engine in self.tts_engines.values():
-            engine.cleanup()
-        self.tts_engines.clear()

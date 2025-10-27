@@ -1,45 +1,51 @@
 # 🗣️Voice
 
-A cross-platform text-to-speech (TTS) system with voice presets and optional LLM text transformation. Works on Windows 11 and macOS with local processing for privacy.
+A simple text-to-speech (TTS) system using Kokoro with 28 English voice presets. Cross-platform with local processing for privacy.
 
 ## Features
 
-- 🎭 **Multiple Voice Presets**: GLaDOS, Kokoro (multiple voices), ElevenLabs, and more
-- 🤖 **Optional LLM Integration**: Transform text with personality using local Ollama
-- 🖥️ **Cross-Platform**: Windows 11 (NVIDIA GPU) and macOS (M1/M2)
-- 🔒 **Privacy-First**: All processing happens locally (except ElevenLabs)
-- ⚡ **GPU Accelerated**: Leverages ONNX Runtime with GPU support
-- 🎵 **Flexible Output**: Play audio or save to OGG format
+- 🎭 **28 Voice Presets**: American and British English voices from Kokoro
+- 🖥️ **Cross-Platform**: Windows, macOS, and Linux
+- 🔒 **Privacy-First**: All processing happens locally
+- ⚡ **GPU Accelerated**: Leverages PyTorch with GPU support
+- 🎵 **WAV Output**: Play audio or save to WAV format
 
 ## Installation
 
 ### Prerequisites
 
-**Windows 11:**
 - Python 3.9+
-- NVIDIA GPU with CUDA support (optional but recommended)
+- [uv](https://docs.astral.sh/uv/) package manager
+- GPU support (NVIDIA CUDA or Apple Silicon) optional but recommended
 
-**macOS:**
-- Python 3.9+
-- Apple Silicon (M1/M2) recommended
+### Global Installation (Recommended)
 
-### Setup
+Install `voice` globally as a command-line tool:
+
+```bash
+uv tool install --from . --with pip voice
+```
+
+Or install from the repository directory:
+
+```bash
+cd /path/to/voice
+uv tool install --editable . --with pip
+```
+
+**Note:** The `--with pip` flag is required for the transformers library used by Kokoro.
+
+### Local Development Installation
+
+For development, you can install in a virtual environment:
 
 1. **Create virtual environment:**
-  ```bash
-  uv venv --python 3.12.8
-  source .venv/bin/activate  # On Windows: .venv\Scripts\activate
-  ```
+   ```bash
+   uv venv --python 3.12.8
+   source .venv/bin/activate  # On Windows: .venv\Scripts\activate
+   ```
 
 2. **Install dependencies:**
-   
-   **For Windows with NVIDIA GPU:**
-   ```cmd
-   uv pip install -r requirements.txt
-   uv pip install onnxruntime-gpu
-   ```
-   
-   **For macOS:**
    ```bash
    uv pip install -r requirements.txt
    ```
@@ -49,17 +55,7 @@ A cross-platform text-to-speech (TTS) system with voice presets and optional LLM
    uv pip install -e .
    ```
 
-4. **Set up Ollama (optional, for text-to-text LLM features; ie. if you want to let the voice change the text to match a personality):**
-   - Download and install [Ollama](https://ollama.ai)
-   - Pull a model: `ollama pull llama3.2`
-   - Ensure Ollama is running: `ollama serve`
-
-5. **Download TTS models:**
-   - The default config expects models in `../models/TTS/`
-   - Ensure you have:
-     - `glados.onnx` and `glados.json` for GLaDOS voice
-     - `kokoro-v1.0.fp16.onnx` for Kokoro voices
-     - `phomenizer_en.onnx` for phonemization
+**Note:** Models will be automatically downloaded from Hugging Face on first use (~500KB per voice).
 
 ## Quick Start
 
@@ -70,19 +66,19 @@ voice --list
 
 ### Synthesize speech:
 ```bash
-voice glados "Hello, test subject."
+voice heart "Hello from the heart voice."
 voice bella "It's a beautiful morning. Time for a cup of coffee."
 voice adam "Another day another dollar."
 ```
 
 ### Save to file:
 ```bash
-voice -o output.ogg glados "Save this to a file"
+voice -o output.wav heart "Save this to a file"
 ```
 
 ### Get voice information:
 ```bash
-voice --info glados
+voice --info heart
 ```
 
 ### Use custom config:
@@ -96,11 +92,11 @@ voice --config config.local.yaml myvoice "Custom text"
 voice <preset> <text> [options]
 
 Positional Arguments:
-  preset                Voice preset name (glados, pirate, neutral, etc.)
+  preset                Voice preset name (heart, bella, adam, etc.)
   text                  Text to synthesize
 
 Options:
-  -o FILE, --output FILE    Save audio to file (OGG format)
+  -o FILE, --output FILE    Save audio to file (WAV format)
   -c FILE, --config FILE    Use custom config file
   -l, --list                List available voice presets
   -i PRESET, --info PRESET  Show information about a voice preset
@@ -108,123 +104,85 @@ Options:
   -h, --help                Show help message
 
 Examples:
-  voice glados "Hello, test subject."
+  voice heart "Hello from the heart voice."
   voice bella "You've got mail."
-  voice -o output.ogg glados "Save to file"
+  voice -o output.wav heart "Save to file"
   voice --list
-  voice --info glados
+  voice --info heart
 ```
 
 ## Configuration
 
-Voice presets are configured in `config.yaml`. Each preset can specify:
+Voice presets are configured in `config.yaml`. Each preset specifies:
 
-- **TTS Engine**: `glados`, or `kokoro`
-- **Model Path**: Path to ONNX model files
-- **Voice Parameters**: Speed, voice variant, etc.
-- **LLM Integration**: Enable text transformation with system prompts
-- **System Prompt**: Personality/style for text transformation
+- **voice**: Kokoro voice ID (e.g., `af_heart`, `af_bella`, `am_adam`)
+- **speed**: Speech rate multiplier (default: 1.0)
 
 ### Example Voice Preset
 
 ```yaml
 voices:
-  glados:
-    tts_engine: "glados"
-    model_path: "../models/TTS/glados.onnx"
-    phonemizer_path: "../models/TTS/phomenizer_en.onnx"
+  heart:
+    voice: "af_heart"
     speed: 1.0
-    enable_llm: true
-    system_prompt: |
-      You are GLaDOS, a sarcastic AI.
-      Transform text to match your signature dry, 
-      emotionless tone from Portal.
+  
+  bella:
+    voice: "af_bella"
+    speed: 1.0
+  
+  adam:
+    voice: "am_adam"
+    speed: 1.2
 ```
 
 ### Adding Custom Voices
 
-1. Edit `config.yaml`
+1. Edit `config.yaml` (or create `config.local.yaml`)
 2. Add a new voice preset under `voices:`
-3. Specify the TTS engine and parameters
-4. Optionally add a system prompt for LLM transformation
+3. Specify the Kokoro voice ID and speed
 
 ```yaml
 voices:
   my_custom_voice:
-    tts_engine: "kokoro"
-    model_path: "../models/TTS/kokoro-v1.0.fp16.onnx"
-    phonemizer_path: "../models/TTS/phomenizer_en.onnx"
-    voice: "af_bella"
-    speed: 1.0
-    enable_llm: true
-    system_prompt: |
-      Your custom personality instructions here...
+    voice: "af_sarah"
+    speed: 0.9
 ```
 
-## Supported TTS Engines
-
-### 1. GLaDOS Voice
-- Custom-trained GLaDOS voice from Portal
-- ONNX-based, GPU-accelerated
-- Requires `glados.onnx` model
-
-### 2. Kokoro Multi-Voice
-- Multiple voice variants (male/female)
-- Supported voices: `af_bella`, `am_adam`, `af_sarah`, `am_michael`, etc.
-- ONNX-based, GPU-accelerated
-- Requires `kokoro-v1.0.fp16.onnx` model
-
-## LLM Integration
-
-Voice can optionally transform text using a local LLM before synthesis:
-
-1. **Install Ollama**: https://ollama.ai
-2. **Pull a model**: `ollama pull llama3.2`
-3. **Enable in config**: Set `enable_llm: true` for a voice preset
-4. **Add system prompt**: Define the transformation style
-
-Example personalities:
-- **GLaDOS**: Sarcastic, scientific AI from Portal
-- **Pirate**: Arr, matey! Talk like a pirate!
-- **Custom**: Define your own personality
+Available Kokoro voice IDs include:
+- **American Female**: `af_bella`, `af_nicole`, `af_sarah`, `af_sky`, `af_alloy`, `af_echo`, `af_fable`, `af_onyx`, `af_nova`, `af_shimmer`, `af_heart`, `af_aoede`, `af_kore`, `af_jessica`, `af_emma`, `af_alice`, `af_lily`, `af_isabella`, `af_river`
+- **American Male**: `am_adam`, `am_eric`, `am_michael`, `am_daniel`, `am_liam`, `am_lewis`, `am_santa`, `am_fenrir`, `am_puck`
+- **British Female**: `bf_emma`, `bf_isabella`
+- **British Male**: `bm_george`, `bm_lewis`
 
 ## Platform-Specific Notes
 
-### Windows 11 (NVIDIA RTX 5070 Ti)
-- Install `onnxruntime-gpu` for GPU acceleration
-- CUDA support enables fast inference
-- Ensure NVIDIA drivers are up to date
+### Windows
+- GPU acceleration via CUDA (if NVIDIA GPU available)
+- Models automatically cached in `%USERPROFILE%\.cache\huggingface\`
 
-### macOS (M1/M2)
-- Uses ONNX Runtime with CoreML backend
-- CPU inference is efficient on Apple Silicon
-- No GPU package needed (automatically optimized)
+### macOS
+- GPU acceleration via Metal (if Apple Silicon)
+- Models automatically cached in `~/.cache/huggingface/`
+
+### Linux
+- GPU acceleration via CUDA (if NVIDIA GPU available)
+- Models automatically cached in `~/.cache/huggingface/`
 
 ## Troubleshooting
 
-### Models not found
-Ensure model files are in the correct location specified in `config.yaml`. Update paths as needed:
-```yaml
-model_path: "/absolute/path/to/models/TTS/glados.onnx"
-```
-
-### Ollama connection failed
-- Ensure Ollama is running: `ollama serve`
-- Check the API URL in config: `http://localhost:11434/api/chat`
-- LLM features will be skipped if Ollama is unavailable
+### First run is slow
+The first time you use a voice, Kokoro downloads the model from Hugging Face (~500KB per voice). Subsequent runs use the cached model and are much faster.
 
 ### Audio playback issues
 - **Windows**: Ensure audio drivers are installed
-- **macOS**: Grant microphone/audio permissions if prompted
-- Use `-o` flag to save to file instead of playing
+- **macOS**: Grant audio permissions if prompted
+- **Linux**: Ensure ALSA/PulseAudio is configured
+- Use `-o output.wav` flag to save to file instead of playing
 
 ### GPU not detected
-- **Windows**: Install CUDA and `onnxruntime-gpu`
-- **macOS**: ONNX Runtime automatically uses optimized backends
-- CPU fallback is automatic if GPU is unavailable
+GPU acceleration is automatic if available. CPU fallback works on all platforms.
 
 ## Acknowledgments
 
-- Based on the [GLaDOS project](https://github.com/dnhkng/GLaDOS)
-- Uses ONNX Runtime for cross-platform inference
-- Integrates with Ollama for local LLM processing
+- Uses [Kokoro TTS](https://huggingface.co/hexgrad/Kokoro-82M) for high-quality voice synthesis
+- Built with PyTorch and Hugging Face Hub
