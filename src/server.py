@@ -89,23 +89,29 @@ class VoiceServer:
                         data = client_socket.recv(1, socket.MSG_PEEK)
                         if not data:
                             log("[Server] Client disconnected, stopping playback...")
-                            import sounddevice as sd
-                            sd.stop()
+                            try:
+                                import sounddevice as sd
+                                sd.stop()
+                            except Exception as e:
+                                log(f"[Server] Error stopping playback: {e}")
                             break
                     except BlockingIOError:
                         # No data available, client still connected
                         pass
-                    except:
+                    except Exception as e:
                         # Socket error, client likely disconnected
                         log("[Server] Client connection lost, stopping playback...")
-                        import sounddevice as sd
-                        sd.stop()
+                        try:
+                            import sounddevice as sd
+                            sd.stop()
+                        except Exception as e2:
+                            log(f"[Server] Error stopping playback: {e2}")
                         break
                     
                     # Check every 100ms
                     threading.Event().wait(0.1)
-            except:
-                pass
+            except Exception as e:
+                log(f"[Server] Monitor thread error: {e}")
         
         try:
             # Receive data
@@ -158,12 +164,17 @@ class VoiceServer:
             
         except Exception as e:
             log(f"[Server] Client handler error: {e}")
+            import traceback
+            traceback.print_exc()
             try:
                 client_socket.sendall(json.dumps({"error": str(e)}).encode('utf-8') + b'\n')
-            except:
-                pass
+            except Exception as e2:
+                log(f"[Server] Could not send error response: {e2}")
         finally:
-            client_socket.close()
+            try:
+                client_socket.close()
+            except Exception as e:
+                log(f"[Server] Error closing client socket: {e}")
 
 
 def start_server(config_path: Optional[str] = None, host: str = "127.0.0.1", port: int = 3124, force_cpu: bool = False):
