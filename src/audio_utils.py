@@ -1,6 +1,8 @@
 """Audio utilities for playback and file saving."""
 
 import os
+import signal
+import threading
 from typing import Optional
 import numpy as np
 import time
@@ -16,6 +18,47 @@ try:
     import sounddevice as sd
 except ImportError:
     sd = None
+
+# Flag for handling interrupts during playback
+_playback_interrupted = False
+
+def _signal_handler(signum, frame):
+    """Handle CTRL+C during playback."""
+    global _playback_interrupted
+    _playback_interrupted = True
+    if sd is not None:
+        sd.stop()
+    print("\n[Voice] Playback interrupted")
+    raise KeyboardInterrupt
+
+
+def with_interrupt_handler(func):
+    """
+    Decorator/context manager to handle CTRL+C during audio playback.
+    Installs signal handler if in main thread, calls function, then restores original handler.
+    """
+    def wrapper(*args, **kwargs):
+        global _playback_interrupted
+        _playback_interrupted = False
+        
+        # Only install signal handler if we're in the main thread
+        is_main_thread = threading.current_thread() is threading.main_thread()
+        old_handler = None
+        
+        if is_main_thread:
+            try:
+                old_handler = signal.signal(signal.SIGINT, _signal_handler)
+            except ValueError:
+                # If signal.signal fails, continue without handler
+                is_main_thread = False
+        
+        try:
+            return func(*args, **kwargs)
+        finally:
+            if is_main_thread and old_handler is not None:
+                signal.signal(signal.SIGINT, old_handler)
+    return wrapper
+
 
 # Removed pydub dependency - only supporting WAV format
 
@@ -39,7 +82,9 @@ def play_audio(audio: np.ndarray, sample_rate: int, speed: float = 1.0) -> None:
     log(f"[Voice] Playing audio ({len(audio)/sample_rate:.2f}s) on: {device_info['name']}")
     log(f"[Voice] Audio shape: {audio.shape}, dtype: {audio.dtype}, range: [{audio.min():.3f}, {audio.max():.3f}]")
     
-    try:
+    @with_interrupt_handler
+    def _do_playback():
+        global _playback_interrupted
         # Ensure audio is the right shape and type
         if len(audio.shape) == 1:
             # Mono audio - keep as 1D for sounddevice
@@ -58,11 +103,20 @@ def play_audio(audio: np.ndarray, sample_rate: int, speed: float = 1.0) -> None:
         
         # Now wait for completion
         sd.wait()
-        log(f"[Voice] Playback complete")
+        
+        if not _playback_interrupted:
+            log(f"[Voice] Playback complete")
+    
+    try:
+        _do_playback()
+    except KeyboardInterrupt:
+        # Re-raise to propagate the interrupt
+        raise
     except Exception as e:
         print(f"Error playing audio: {e}")
         import traceback
         traceback.print_exc()
+
 
 
 def save_audio_wav(audio: np.ndarray, sample_rate: int, output_path: str) -> None:
@@ -163,16 +217,28 @@ def play_stinger(stinger_path: str) -> None:
     
     log(f"[Voice] Playing stinger on: {device_info['name']}")
     
-    try:
+    @with_interrupt_handler
+    def _do_playback():
+        global _playback_interrupted
         # Ensure audio is the right shape
         if len(audio_data.shape) == 2 and audio_data.shape[1] == 1:
             # Convert (N, 1) to (N,) - flatten
-            audio_data = audio_data.flatten()
+            audio_to_play = audio_data.flatten()
+        else:
+            audio_to_play = audio_data
         
         # Play audio and wait for completion
-        sd.play(audio_data, samplerate=sample_rate, device=default_device, blocking=True)
-        log(f"[Voice] Stinger playback complete")
+        sd.play(audio_to_play, samplerate=sample_rate, device=default_device, blocking=True)
+        
+        if not _playback_interrupted:
+            log(f"[Voice] Stinger playback complete")
+    
+    try:
+        _do_playback()
+    except KeyboardInterrupt:
+        raise
     except Exception as e:
         print(f"Error playing stinger: {e}")
         import traceback
         traceback.print_exc()
+

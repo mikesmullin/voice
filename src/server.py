@@ -9,6 +9,10 @@ from typing import Optional
 from .voice_engine import VoiceEngine
 from .timing import start_timer, log
 
+# Global flag to track active client connections
+_active_client_sockets = {}
+_client_lock = threading.Lock()
+
 
 class VoiceServer:
     """TCP server for low-latency voice synthesis."""
@@ -71,8 +75,41 @@ class VoiceServer:
     
     def _handle_client(self, client_socket: socket.socket):
         """Handle a client request."""
+        thread_id = threading.current_thread().ident
+        
+        # Monitor thread to detect client disconnection
+        def monitor_connection():
+            """Monitor the client socket and stop playback if disconnected."""
+            try:
+                # Set socket to non-blocking for monitoring
+                client_socket.setblocking(False)
+                while True:
+                    try:
+                        # Try to peek at socket - if it returns empty, client disconnected
+                        data = client_socket.recv(1, socket.MSG_PEEK)
+                        if not data:
+                            log("[Server] Client disconnected, stopping playback...")
+                            import sounddevice as sd
+                            sd.stop()
+                            break
+                    except BlockingIOError:
+                        # No data available, client still connected
+                        pass
+                    except:
+                        # Socket error, client likely disconnected
+                        log("[Server] Client connection lost, stopping playback...")
+                        import sounddevice as sd
+                        sd.stop()
+                        break
+                    
+                    # Check every 100ms
+                    threading.Event().wait(0.1)
+            except:
+                pass
+        
         try:
             # Receive data
+            client_socket.setblocking(True)  # Blocking for initial receive
             data = b""
             while True:
                 chunk = client_socket.recv(4096)
@@ -100,6 +137,10 @@ class VoiceServer:
             start_timer()
             log(f"[Server] Request: voice='{voice_name}', text='{text[:50]}...'")
             
+            # Start connection monitor thread
+            monitor_thread = threading.Thread(target=monitor_connection, daemon=True)
+            monitor_thread.start()
+            
             # Synthesize speech
             try:
                 self.engine.synthesize(text, voice_name, output_file, stinger)
@@ -108,8 +149,12 @@ class VoiceServer:
                 log(f"[Server] Synthesis error: {e}")
                 response = {"error": str(e)}
             
-            # Send response
-            client_socket.sendall(json.dumps(response).encode('utf-8') + b'\n')
+            # Send response (if client still connected)
+            try:
+                client_socket.setblocking(True)
+                client_socket.sendall(json.dumps(response).encode('utf-8') + b'\n')
+            except:
+                log("[Server] Could not send response, client already disconnected")
             
         except Exception as e:
             log(f"[Server] Client handler error: {e}")

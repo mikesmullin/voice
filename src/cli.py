@@ -218,6 +218,9 @@ def main(args: Optional[list] = None) -> int:
             
             # Server responded with error
             if "error" in response:
+                # Check if it was an interrupt
+                if response['error'] == "Interrupted by user":
+                    raise KeyboardInterrupt()
                 print(f"Error: {response['error']}", file=sys.stderr)
                 return 1
             

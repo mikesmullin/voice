@@ -121,19 +121,31 @@ class VoiceEngine:
             return
         
         import sounddevice as sd
+        from .audio_utils import with_interrupt_handler, _playback_interrupted
+        
         default_device = sd.default.device[1]  # Output device
         device_info = sd.query_devices(default_device)
         
         log(f"[Voice] Playing stinger on: {device_info['name']}")
         
-        try:
+        @with_interrupt_handler
+        def _do_playback():
             # Ensure audio is the right shape
             if len(stinger_audio_data.shape) == 2 and stinger_audio_data.shape[1] == 1:
-                stinger_audio_data = stinger_audio_data.flatten()
+                audio_to_play = stinger_audio_data.flatten()
+            else:
+                audio_to_play = stinger_audio_data
             
             # Play stinger and wait for completion
-            sd.play(stinger_audio_data, samplerate=stinger_sample_rate, device=default_device, blocking=True)
-            log(f"[Voice] Stinger playback complete")
+            sd.play(audio_to_play, samplerate=stinger_sample_rate, device=default_device, blocking=True)
+            
+            if not _playback_interrupted:
+                log(f"[Voice] Stinger playback complete")
+        
+        try:
+            _do_playback()
+        except KeyboardInterrupt:
+            raise
         except Exception as e:
             log(f"[Voice] Warning: Could not play stinger: {e}")
     
