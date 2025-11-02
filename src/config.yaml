@@ -50,7 +50,7 @@ voices:
   
   jessica:
     voice: "af_jessica"
-    speed: 1.0
+    speed: 0.8
   
   river:
     voice: "af_river"

@@ -45,7 +45,8 @@ def send_synthesis_request(
         client_socket.connect((host, port))
         
         # Once connected, increase timeout for actual synthesis
-        client_socket.settimeout(30.0)
+        # Allow up to 10 minutes for very long messages
+        client_socket.settimeout(600.0)
         
         # Send request
         request_data = json.dumps(request).encode('utf-8') + b'\n'
