@@ -11,24 +11,7 @@ name = "voice"
 requires-python = ">=3.10,<3.13"
 version = "0.1.0"
 
-[project.optional-dependencies]
-all = [
-  "voice[styletts2]",
-]
-styletts2 = [
-  "torchaudio>=2.0.0",
-  "munch>=2.5.0",
-  "librosa>=0.10.0",
-  "nltk>=3.8",
-  "gruut>=2.2.3",
-  "gruut-lang-en>=2.0.0",
-  "accelerate>=0.20.0",
-  "transformers>=4.30.0",
-  "einops>=0.6.0",
-  "einops-exts>=0.0.4",
-  "matplotlib>=3.7.0",
-  "monotonic-align @ git+https://github.com/resemble-ai/monotonic_align.git",
-]
+# No optional dependencies configured
 
 [[tool.uv.index]]
 name = "pytorch-cu129"

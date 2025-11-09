@@ -1,19 +1,18 @@
 # 🗣️ Voice
 
-A simple, fast text-to-speech (TTS) CLI using Kokoro and StyleTTS2 with voice presets. Features GPU acceleration, low-latency server mode, and zero-shot voice cloning with StyleTTS2.
+A simple, fast text-to-speech (TTS) CLI using Kokoro with voice presets. Features GPU acceleration and low-latency server mode.
 
 ## Features
 
 - 🎭 **Multiple TTS Models**: 
   - **Kokoro**: 28 English voice presets (20 American + 8 British)
-  - **StyleTTS2**: Zero-shot voice cloning with reference audio
 - 🔥 **Server Mode**: Pre-load model for near-instant synthesis (<0.2s)
 - 🖥️ **Cross-Platform**: Windows, macOS, and Linux
 - ⚡ **GPU Accelerated**: CUDA support for NVIDIA GPUs (10-20x realtime)
 - 🔒 **Privacy-First**: All processing happens locally, no cloud required
 - 🎵 **WAV Output**: Play audio or save to file
 - 🔔 **Stinger Support**: Optional sound effects before speech (alerts, notifications, etc.)
-- 🎤 **Zero-Shot Cloning**: Clone any voice with a single reference audio file (StyleTTS2)
+
 
 ## Installation
 
@@ -23,7 +22,7 @@ A simple, fast text-to-speech (TTS) CLI using Kokoro and StyleTTS2 with voice pr
 - [uv](https://docs.astral.sh/uv/) package manager
 - **PortAudio** (system dependency for audio playback on linux)
 - **Optional but recommended**: NVIDIA GPU with CUDA 12.x for GPU acceleration
-- **For StyleTTS2**: espeak-ng (system dependency)
+
 
 ### Quick Install
 
@@ -32,70 +31,10 @@ A simple, fast text-to-speech (TTS) CLI using Kokoro and StyleTTS2 with voice pr
 Install `voice` globally as a CLI tool:
 
 ```bash
-git clone https://github.com/yourusername/voice.git
-cd voice
-
-# Basic install (Kokoro TTS only)
 uv tool install --editable . --with pip
-
-# Or with StyleTTS2 support for zero-shot voice cloning
-uv tool install --editable .[styletts2] --with pip
 ```
 
 **Note:** The `--with pip` flag is required for transformers dependencies.
-
-#### 3. Install Optional Dependencies (StyleTTS2 only)
-
-If you installed with `[styletts2]`, you need espeak-ng for phonemization:
-
-**Automated (recommended):**
-```bash
-python setup_deps.py
-```
-
-**Manual installation:**
-
-- **Windows**: 
-  - With Chocolatey: `choco install espeak-ng`
-  - With Scoop: `scoop install espeak-ng`
-  - Or download from https://github.com/espeak-ng/espeak-ng/releases
-
-- **macOS**: 
-  ```bash
-  brew install espeak-ng
-  ```
-
-- **Linux**: 
-  ```bash
-  # Debian/Ubuntu
-  sudo apt-get install espeak-ng
-  
-  # Fedora
-  sudo dnf install espeak-ng
-  
-  # Arch
-  sudo pacman -S espeak-ng
-  ```
-
-Verify installation:
-```bash
-espeak-ng --version
-```
-
-#### 4. Download StyleTTS2 Models (Optional)
-
-If using StyleTTS2, download the pre-trained models:
-
-```bash
-# Clone StyleTTS2 repository
-git clone https://github.com/yl4579/StyleTTS2.git tmp/StyleTTS2
-
-# Download models from Hugging Face
-# Visit: https://huggingface.co/yl4579/StyleTTS2-LibriTTS
-# Download and place in tmp/StyleTTS2/Models/LibriTTS/:
-#   - config.yml
-#   - epochs_2nd_00020.pth
-```
 
 ### GPU Support (NVIDIA)
 
@@ -313,88 +252,6 @@ Stingers are short sound effects played before speech synthesis. They're useful 
 - Stinger files must be WAV format
 - If a stinger name doesn't exist in the config, it's silently ignored (no-op)
 - Stinger audio is loaded early but played right before synthesized speech for optimal timing
-
-### Zero-Shot Voice Cloning with StyleTTS2
-
-In addition to Kokoro's preset voices, you can use **StyleTTS2** for zero-shot voice cloning - clone any voice using just a single reference audio file!
-
-**Setup:**
-
-1. **Clone StyleTTS2 repository**:
-   ```bash
-   git clone https://github.com/yl4579/StyleTTS2.git tmp/StyleTTS2
-   ```
-
-2. **Download pre-trained models**:
-   - Download from [https://huggingface.co/yl4579/StyleTTS2-LibriTTS](https://huggingface.co/yl4579/StyleTTS2-LibriTTS)
-   - Extract to `tmp/StyleTTS2/Models/LibriTTS/`
-   - You need: `config.yml` and `epochs_2nd_00020.pth`
-
-3. **Install additional dependencies**:
-   ```bash
-   uv pip install phonemizer librosa nltk munch
-   
-   # Install espeak (required for phonemizer)
-   # Windows: Download from https://github.com/espeak-ng/espeak-ng/releases
-   # macOS: brew install espeak-ng
-   # Linux: sudo apt-get install espeak-ng
-   ```
-
-**Configuration:**
-
-Add a voice preset using StyleTTS2 in `config.yaml`:
-
-```yaml
-voices:
-  ada:
-    model: "styletts2"                    # Use StyleTTS2 instead of Kokoro
-    reference_audio: tmp/sc2-adjutant.wav # Reference audio for voice cloning
-    speed: 1.5
-    # Optional: StyleTTS2 parameters (defaults shown)
-    alpha: 0.3              # Timbre blending (0=reference, 1=predicted)
-    beta: 0.7               # Prosody blending (higher=more emotional)
-    diffusion_steps: 5      # Quality vs speed (5-10 recommended)
-    embedding_scale: 1.0    # Classifier-free guidance scale
-```
-
-**Usage:**
-
-```bash
-# Use StyleTTS2 voice (same as Kokoro)
-voice ada "Affirmative, Commander. All systems operational."
-
-# The voice will be cloned from tmp/sc2-adjutant.wav
-```
-
-**StyleTTS2 Parameters:**
-
-- **`alpha` (0.0-1.0)**: Controls timbre similarity to reference
-  - `0.0` = Maximum similarity to reference voice (good for maintaining acoustic environment)
-  - `1.0` = More generic, model-predicted timbre
-  - Default: `0.3` (good balance)
-
-- **`beta` (0.0-1.0)**: Controls prosody and emotion
-  - `0.0` = Maintains reference emotion/prosody
-  - `1.0` = More emotional and text-driven prosody
-  - Default: `0.7` (expressive but controlled)
-
-- **`diffusion_steps` (1-15)**: Quality vs speed tradeoff
-  - `5` = Fast, good quality (default)
-  - `10` = Higher quality, more diverse samples
-  - `15+` = Best quality, slowest
-
-- **`embedding_scale` (0.8-2.0)**: Style conditioning strength
-  - `1.0` = Standard (default)
-  - `1.5-2.0` = More expressive, emotional speech
-  - Higher values may introduce artifacts
-
-**Tips:**
-
-- Use high-quality reference audio (clear speech, minimal background noise)
-- Reference audio length: 5-15 seconds works best
-- For consistent timbre, use `alpha=0.0, beta=0.5`
-- For emotional variation, use `alpha=0.3, beta=0.9, embedding_scale=2.0`
-- StyleTTS2 is slower than Kokoro (~2-5s vs ~0.2s) but offers unlimited voice options
 
 ## Performance
 

@@ -15,7 +15,6 @@ class VoiceEngine:
     
     Supports:
     - Kokoro TTS (default): Fast, preset voices
-    - StyleTTS2: Zero-shot voice cloning with reference audio
     """
     
     def __init__(self, config_path: Optional[str] = None, force_cpu: bool = False):
@@ -32,7 +31,6 @@ class VoiceEngine:
         
         # Lazy-loaded engine instances
         self.kokoro_engine = None
-        self.styletts2_engine = None
         
     def _get_default_config_path(self) -> str:
         """Get default path to config.yaml."""
@@ -54,14 +52,6 @@ class VoiceEngine:
             from .kokoro_engine import KokoroEngine
             self.kokoro_engine = KokoroEngine(force_cpu=self.force_cpu)
         return self.kokoro_engine
-    
-    def _get_styletts2_engine(self):
-        """Get or create StyleTTS2 engine instance (lazy loading)."""
-        if self.styletts2_engine is None:
-            from .styletts2_engine import StyleTTS2Engine
-            log(f"[StyleTTS2] Initializing StyleTTS2 engine...")
-            self.styletts2_engine = StyleTTS2Engine(force_cpu=self.force_cpu)
-        return self.styletts2_engine
     
     def _resolve_path(self, relative_path: str) -> Path:
         """
@@ -171,13 +161,11 @@ class VoiceEngine:
         voice_config = voices[voice_name]
         model_type = voice_config.get("model", "kokoro")
         
-        # Route to appropriate engine
-        if model_type == "styletts2":
-            self._synthesize_styletts2(text, voice_name, voice_config, output_file, stinger)
-        elif model_type == "kokoro":
-            self._synthesize_kokoro(text, voice_name, voice_config, output_file, stinger)
-        else:
-            raise ValueError(f"Unknown model type: {model_type}")
+        # Route to appropriate engine (only Kokoro supported)
+        if model_type != "kokoro":
+            raise ValueError(f"Unsupported model type: {model_type}. Only 'kokoro' is supported.")
+
+        self._synthesize_kokoro(text, voice_name, voice_config, output_file, stinger)
     
     def _synthesize_kokoro(self, text: str, voice_name: str, voice_config: dict, output_file: Optional[str], stinger: Optional[str]) -> None:
         """Synthesize using Kokoro TTS engine."""
@@ -207,56 +195,6 @@ class VoiceEngine:
             
             if audio_config.get("auto_play", True):
                 play_audio(audio_data, sample_rate, speed)
-    
-    def _synthesize_styletts2(self, text: str, voice_name: str, voice_config: dict, output_file: Optional[str], stinger: Optional[str]) -> None:
-        """Synthesize using StyleTTS2 engine with zero-shot voice cloning."""
-        engine = self._get_styletts2_engine()
-        
-        # Get reference audio path
-        reference_audio = voice_config.get("reference_audio")
-        if not reference_audio:
-            raise ValueError(
-                f"Voice preset '{voice_name}' is configured to use StyleTTS2 but "
-                "no 'reference_audio' path is specified in config"
-            )
-        
-        ref_audio_path = self._resolve_path(reference_audio)
-        if not ref_audio_path.exists():
-            raise FileNotFoundError(f"Reference audio file not found: {ref_audio_path}")
-        
-        log(f"[StyleTTS2] Using reference audio: {ref_audio_path}")
-        
-        # Load stinger if needed
-        stinger_audio_data, stinger_sample_rate = self._load_stinger(voice_config, stinger, output_file)
-        
-        # Get StyleTTS2 parameters (with defaults)
-        alpha = voice_config.get("alpha", 0.3)
-        beta = voice_config.get("beta", 0.7)
-        diffusion_steps = voice_config.get("diffusion_steps", 5)
-        embedding_scale = voice_config.get("embedding_scale", 1.0)
-        
-        # Synthesize audio
-        audio_data = engine.synthesize(
-            text=text,
-            ref_audio_path=str(ref_audio_path),
-            alpha=alpha,
-            beta=beta,
-            diffusion_steps=diffusion_steps,
-            embedding_scale=embedding_scale
-        )
-        
-        sample_rate = 24000  # StyleTTS2 uses 24kHz
-        audio_config = self.config.get("audio", {})
-        
-        if output_file:
-            audio_format = audio_config.get("format", "wav")
-            save_audio(audio_data, sample_rate, output_file, audio_format)
-        else:
-            self._play_stinger(stinger_audio_data, stinger_sample_rate)
-            
-            if audio_config.get("auto_play", True):
-                # Note: speed parameter not used with StyleTTS2
-                play_audio(audio_data, sample_rate, speed=1.0)
     
     def list_voices(self) -> list:
         """List all available voice presets."""
