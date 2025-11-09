@@ -8,7 +8,7 @@ dependencies = [
 ]
 description = "A simple text-to-speech CLI using Kokoro with 28 English voice presets"
 name = "voice"
-requires-python = ">=3.9"
+requires-python = ">=3.10,<3.13"
 version = "0.1.0"
 
 [project.optional-dependencies]

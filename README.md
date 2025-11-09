@@ -19,8 +19,9 @@ A simple, fast text-to-speech (TTS) CLI using Kokoro and StyleTTS2 with voice pr
 
 ### Prerequisites
 
-- Python 3.9+
+- Python 3.10-3.12
 - [uv](https://docs.astral.sh/uv/) package manager
+- **PortAudio** (system dependency for audio playback on linux)
 - **Optional but recommended**: NVIDIA GPU with CUDA 12.x for GPU acceleration
 - **For StyleTTS2**: espeak-ng (system dependency)
 
@@ -43,7 +44,7 @@ uv tool install --editable .[styletts2] --with pip
 
 **Note:** The `--with pip` flag is required for transformers dependencies.
 
-#### 2. Install System Dependencies (StyleTTS2 only)
+#### 3. Install Optional Dependencies (StyleTTS2 only)
 
 If you installed with `[styletts2]`, you need espeak-ng for phonemization:
 
@@ -81,7 +82,7 @@ Verify installation:
 espeak-ng --version
 ```
 
-#### 3. Download StyleTTS2 Models (Optional)
+#### 4. Download StyleTTS2 Models (Optional)
 
 If using StyleTTS2, download the pre-trained models:
 
