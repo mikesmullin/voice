@@ -14,7 +14,8 @@ class VoiceEngine:
     Main voice engine adapter that routes to different TTS model implementations.
     
     Supports:
-    - Kokoro TTS (default): Fast, preset voices
+    - Kokoro TTS: GPU-accelerated, highest quality
+    - Piper TTS: CPU-optimized, fast, offline
     """
     
     def __init__(self, config_path: Optional[str] = None, force_cpu: bool = False):
@@ -31,6 +32,7 @@ class VoiceEngine:
         
         # Lazy-loaded engine instances
         self.kokoro_engine = None
+        self.piper_engine = None
         
     def _get_default_config_path(self) -> str:
         """Get default path to config.yaml."""
@@ -52,6 +54,17 @@ class VoiceEngine:
             from .kokoro_engine import KokoroEngine
             self.kokoro_engine = KokoroEngine(force_cpu=self.force_cpu)
         return self.kokoro_engine
+    
+    def _get_piper_engine(self):
+        """Get or create Piper engine instance (lazy loading)."""
+        if self.piper_engine is None:
+            from .piper_engine import PiperEngine
+            self.piper_engine = PiperEngine()
+        return self.piper_engine
+    
+    def get_fallback_voice(self) -> str:
+        """Get the configured fallback voice name."""
+        return self.config.get("fallback_voice", "lessac")
     
     def _resolve_path(self, relative_path: str) -> Path:
         """
@@ -159,19 +172,50 @@ class VoiceEngine:
             )
         
         voice_config = voices[voice_name]
-        model_type = voice_config.get("model", "kokoro")
+        engine_type = voice_config.get("engine", "kokoro")  # Default to kokoro for backwards compatibility
         
-        # Route to appropriate engine (only Kokoro supported)
-        if model_type != "kokoro":
-            raise ValueError(f"Unsupported model type: {model_type}. Only 'kokoro' is supported.")
-
-        self._synthesize_kokoro(text, voice_name, voice_config, output_file, stinger)
+        # Route to appropriate engine
+        if engine_type == "kokoro":
+            self._synthesize_kokoro(text, voice_name, voice_config, output_file, stinger)
+        elif engine_type == "piper":
+            self._synthesize_piper(text, voice_name, voice_config, output_file, stinger)
+        else:
+            raise ValueError(f"Unsupported engine type: {engine_type}. Supported: 'kokoro', 'piper'")
     
     def _synthesize_kokoro(self, text: str, voice_name: str, voice_config: dict, output_file: Optional[str], stinger: Optional[str]) -> None:
         """Synthesize using Kokoro TTS engine."""
         engine = self._get_kokoro_engine()
         
         # Get Kokoro-specific parameters
+        voice_id = voice_config.get("voice")
+        if not voice_id:
+            raise ValueError(f"Voice preset '{voice_name}' missing 'voice' parameter")
+        
+        speed = voice_config.get("speed", 1.0)
+        
+        # Load stinger if needed
+        stinger_audio_data, stinger_sample_rate = self._load_stinger(voice_config, stinger, output_file)
+        
+        # Synthesize audio
+        audio_data, sample_rate = engine.synthesize(text, voice_id, speed)
+        
+        # Output or playback
+        audio_config = self.config.get("audio", {})
+        
+        if output_file:
+            audio_format = audio_config.get("format", "wav")
+            save_audio(audio_data, sample_rate, output_file, audio_format)
+        else:
+            self._play_stinger(stinger_audio_data, stinger_sample_rate)
+            
+            if audio_config.get("auto_play", True):
+                play_audio(audio_data, sample_rate, speed)
+    
+    def _synthesize_piper(self, text: str, voice_name: str, voice_config: dict, output_file: Optional[str], stinger: Optional[str]) -> None:
+        """Synthesize using Piper TTS engine (CPU-based)."""
+        engine = self._get_piper_engine()
+        
+        # Get Piper-specific parameters
         voice_id = voice_config.get("voice")
         if not voice_id:
             raise ValueError(f"Voice preset '{voice_name}' missing 'voice' parameter")
@@ -207,4 +251,11 @@ class VoiceEngine:
         if voice_name not in voices:
             raise ValueError(f"Voice '{voice_name}' not found")
         
-        return voices[voice_name]
+        voice_config = voices[voice_name].copy()
+        # Add engine type (default to kokoro for backwards compatibility)
+        if "engine" not in voice_config:
+            voice_config["engine"] = "kokoro"
+        # Add tts_engine for display purposes
+        voice_config["tts_engine"] = voice_config["engine"].capitalize()
+        
+        return voice_config

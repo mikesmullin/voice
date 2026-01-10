@@ -193,21 +193,25 @@ def main(args: Optional[list] = None) -> int:
                 stinger=getattr(parsed_args, 'stinger', None)
             )
             
-            # If server connection failed (None), fall back to direct synthesis
+            # If server connection failed (None), fall back to Piper CPU synthesis
             if response is None:
                 timing.start_timer()
-                timing.log("[Voice] Server not available, falling back to direct synthesis...")
+                timing.log("[Voice] Server not available, falling back to Piper CPU synthesis...")
                 
-                engine = VoiceEngine(config_path=None, force_cpu=False)
+                engine = VoiceEngine(config_path=None, force_cpu=True)
                 
                 if not parsed_args.preset or not text:
                     print("Error: Missing preset or text", file=sys.stderr)
                     return 1
                 
+                # Get the fallback voice from config
+                fallback_voice = engine.get_fallback_voice()
+                timing.log(f"[Voice] Using fallback voice: {fallback_voice}")
+                
                 try:
                     engine.synthesize(
                         text=text,
-                        voice_name=parsed_args.preset,
+                        voice_name=fallback_voice,
                         output_file=getattr(parsed_args, 'output', None),
                         stinger=getattr(parsed_args, 'stinger', None)
                     )

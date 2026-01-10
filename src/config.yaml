@@ -1,122 +1,292 @@
 # Voice Configuration File
-# Simple voice presets for Kokoro TTS
+# Supports multiple TTS engines: kokoro (GPU), piper (CPU)
+
+# Default fallback voice when server is unavailable
+fallback_voice: lessac
 
 voices:
-  # American English Voices
+  # ==========================================================================
+  # KOKORO VOICES (GPU-accelerated, highest quality)
+  # ==========================================================================
+  
+  # --- American English Female (Kokoro) ---
   bella:
+    engine: kokoro
     voice: "af_bella"
     speed: 1.0
   
   nicole:
-    voice: "af_nicole" # lusty whisper
+    engine: kokoro
+    voice: "af_nicole"  # lusty whisper
     speed: 1.0
   
   alloy:
-    voice: "af_alloy" # gender ambiguous but clear
+    engine: kokoro
+    voice: "af_alloy"  # gender ambiguous but clear
     speed: 0.8
   
   aoede:
+    engine: kokoro
     voice: "af_aoede"
     speed: 1.0
   
   ada:
+    engine: kokoro
     voice: "af_aoede"
     speed: 1.5
   
-
   kore:
-    voice: "af_kore" # clear and authoritative
+    engine: kokoro
+    voice: "af_kore"  # clear and authoritative
     speed: 1.0
   
   sarah:
+    engine: kokoro
     voice: "af_sarah"
     speed: 1.0
   
   nova:
-    voice: "af_nova" # pleasant female nautrally slower
+    engine: kokoro
+    voice: "af_nova"  # pleasant female naturally slower
     speed: 1.0
   
   jessica:
+    engine: kokoro
     voice: "af_jessica"
     speed: 0.8
   
   river:
+    engine: kokoro
     voice: "af_river"
     speed: 1.0
   
   sky:
+    engine: kokoro
     voice: "af_sky"
     speed: 1.0
   
   heart:
+    engine: kokoro
     voice: "af_heart"
     speed: 1.0
   
+  # --- American English Male (Kokoro) ---
   fenrir:
+    engine: kokoro
     voice: "am_fenrir"
     speed: 1.0
   
   michael:
-    voice: "am_michael" # clear authoritative male radio voice
+    engine: kokoro
+    voice: "am_michael"  # clear authoritative male radio voice
     speed: 1.0
   
   puck:
-    voice: "am_puck" # teen male
+    engine: kokoro
+    voice: "am_puck"  # teen male
     speed: 1.0
   
   echo:
+    engine: kokoro
     voice: "am_echo"
     speed: 1.0
   
   eric:
+    engine: kokoro
     voice: "am_eric"
     speed: 1.0
   
   liam:
-    voice: "am_liam" # black male
+    engine: kokoro
+    voice: "am_liam"  # black male
     speed: 1.0
   
   onyx:
-    voice: "am_onyx" # black male (deeper)
+    engine: kokoro
+    voice: "am_onyx"  # black male (deeper)
     speed: 1.0
   
   santa:
-    voice: "am_santa" # jovial male pretending
+    engine: kokoro
+    voice: "am_santa"  # jovial male pretending
     speed: 1.0
   
   adam:
-    voice: "am_adam" # annoying male
+    engine: kokoro
+    voice: "am_adam"  # annoying male
     speed: 1.0
   
-  # British English Voices
+  # --- British English Female (Kokoro) ---
   emma:
+    engine: kokoro
     voice: "bf_emma"
     speed: 1.0
   
   isabella:
+    engine: kokoro
     voice: "bf_isabella"
     speed: 1.0
   
-  fable:
-    voice: "bm_fable"
-    speed: 1.0
-  
-  george:
-    voice: "bm_george"
-    speed: 1.0
-  
-  lewis:
-    voice: "bm_lewis"
-    speed: 1.0
-  
   alice:
+    engine: kokoro
     voice: "bf_alice"
     speed: 1.0
   
   lily:
+    engine: kokoro
     voice: "bf_lily"
     speed: 1.0
   
+  # --- British English Male (Kokoro) ---
+  fable:
+    engine: kokoro
+    voice: "bm_fable"
+    speed: 1.0
+  
+  george:
+    engine: kokoro
+    voice: "bm_george"
+    speed: 1.0
+  
+  lewis:
+    engine: kokoro
+    voice: "bm_lewis"
+    speed: 1.0
+  
   daniel:
-    voice: "bm_daniel" # best male broadcaster voice
+    engine: kokoro
+    voice: "bm_daniel"  # best male broadcaster voice
     speed: 0.9
+
+  # ==========================================================================
+  # PIPER VOICES (CPU-optimized, fast, offline)
+  # ==========================================================================
+  
+  # --- American English Female (Piper) ---
+  
+  amy:
+    engine: piper
+    voice: "en_US-amy-medium"
+    # voice: "en_US-amy-low"
+  
+  hfc_female:
+    engine: piper
+    voice: "en_US-hfc_female-medium"
+  
+  kathleen:
+    engine: piper
+    voice: "en_US-kathleen-low"
+  
+  kristin:
+    engine: piper
+    voice: "en_US-kristin-medium"
+  
+  lessac:  # favorite
+    engine: piper
+    voice: "en_US-lessac-high"
+    # voice: "en_US-lessac-medium"
+    # voice: "en_US-lessac-low"
+  
+  libritts:
+    engine: piper
+    voice: "en_US-libritts-high"
+    #voice: "en_US-libritts_r-medium"
+  
+  ljspeech:
+    engine: piper
+    voice: "en_US-ljspeech-high"
+    # voice: "en_US-ljspeech-medium"
+  
+  # --- American English Male (Piper) ---
+  
+  arctic:
+    engine: piper
+    voice: "en_US-arctic-medium"
+  
+  bryce:
+    engine: piper
+    voice: "en_US-bryce-medium"
+  
+  danny:
+    engine: piper
+    voice: "en_US-danny-low"
+  
+  hfc_male:
+    engine: piper
+    voice: "en_US-hfc_male-medium"
+  
+  joe:
+    engine: piper
+    voice: "en_US-joe-medium"
+  
+  john:
+    engine: piper
+    voice: "en_US-john-medium"
+  
+  kusal:
+    engine: piper
+    voice: "en_US-kusal-medium"
+  
+  l2arctic:
+    engine: piper
+    voice: "en_US-l2arctic-medium" # bad quality
+  
+  norman:  # favorite
+    engine: piper
+    voice: "en_US-norman-medium"
+  
+  reza:
+    engine: piper
+    voice: "en_US-reza_ibrahim-medium"
+  
+  ryan:
+    engine: piper
+    voice: "en_US-ryan-high"
+    # voice: "en_US-ryan-medium"
+    # voice: "en_US-ryan-low"
+  
+  sam:
+    engine: piper
+    voice: "en_US-sam-medium" # bad quality
+  
+  # --- British English Female (Piper) ---
+  
+  alba:
+    engine: piper
+    voice: "en_GB-alba-medium"
+  
+  cori:  # favorite
+    engine: piper
+    voice: "en_GB-cori-medium"
+    # voice: "en_GB-cori-high"
+  
+  jenny:
+    engine: piper
+    voice: "en_GB-jenny_dioco-medium"
+  
+  southern_female:
+    engine: piper
+    voice: "en_GB-southern_english_female-low"
+  
+  # --- British English Male (Piper) ---
+  
+  alan:  # favorite
+    engine: piper
+    voice: "en_GB-alan-medium"
+    # voice: "en_GB-alan-low"
+  
+  aru:  # favorite
+    engine: piper
+    voice: "en_GB-aru-medium"
+  
+  northern_male:
+    engine: piper
+    voice: "en_GB-northern_english_male-medium"
+  
+  semaine:
+    engine: piper
+    voice: "en_GB-semaine-medium" # bad quality
+  
+  vctk:  # favorite
+    engine: piper
+    voice: "en_GB-vctk-medium"
