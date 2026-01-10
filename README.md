@@ -1,14 +1,16 @@
 # 🗣️ Voice
 
-A simple, fast text-to-speech (TTS) CLI using Kokoro with voice presets. Features GPU acceleration and low-latency server mode.
+A simple, fast text-to-speech (TTS) CLI with voice presets. Features GPU acceleration with Kokoro and CPU fallback with Piper.
 
 ## Features
 
-- 🎭 **Multiple TTS Models**: 
-  - **Kokoro**: 28 English voice presets (20 American + 8 British)
+- 🎭 **Multiple TTS Engines**: 
+  - **Kokoro**: 28 high-quality English voices (GPU-accelerated)
+  - **Piper**: 25+ fast CPU-optimized voices (no GPU required)
 - 🔥 **Server Mode**: Pre-load model for near-instant synthesis (<0.2s)
 - 🖥️ **Cross-Platform**: Windows, macOS, and Linux
 - ⚡ **GPU Accelerated**: CUDA support for NVIDIA GPUs (10-20x realtime)
+- 💻 **CPU Fallback**: Piper engine runs efficiently without GPU
 - 🔒 **Privacy-First**: All processing happens locally, no cloud required
 - 🎵 **WAV Output**: Play audio or save to file
 - 🔔 **Stinger Support**: Optional sound effects before speech (alerts, notifications, etc.)
@@ -154,23 +156,42 @@ voice hot ada "Server notification" --stinger alert
 
 ## Available Voices
 
-### American Female (20 voices)
+### Kokoro Voices (GPU-accelerated, highest quality)
+
+#### American Female
 Best quality: `heart`, `bella`, `sarah`, `sky`
-- `af_bella`, `af_nicole`, `af_sarah`, `af_sky`, `af_alloy`, `af_echo`
-- `af_fable`, `af_onyx`, `af_nova`, `af_shimmer`, `af_heart`, `af_aoede`
-- `af_kore`, `af_jessica`, `af_emma`, `af_alice`, `af_lily`, `af_isabella`
-- `af_river`, `ada` (custom: aoede at 0.5x speed)
+- `bella`, `nicole`, `alloy`, `aoede`, `ada`, `kore`, `sarah`, `nova`
+- `jessica`, `river`, `sky`, `heart`
 
-### American Male (9 voices)
+#### American Male
 Best quality: `adam`, `eric`, `michael`
-- `am_adam`, `am_eric`, `am_michael`, `am_daniel`, `am_liam`, `am_lewis`
-- `am_santa`, `am_fenrir`, `am_puck`
+- `fenrir`, `michael`, `puck`, `echo`, `eric`, `liam`, `onyx`, `santa`, `adam`
 
-### British Female (2 voices)
-- `bf_emma`, `bf_isabella`
+#### British Female
+- `emma`, `isabella`, `alice`, `lily`
 
-### British Male (6 voices)
-- `bm_george`, `bm_lewis`, `bm_puck`, `bm_fenrir`, `bm_santa`, `bm_daniel`
+#### British Male
+- `fable`, `george`, `lewis`, `daniel`
+
+### Piper Voices (CPU-optimized, fast)
+
+Piper voices run efficiently on CPU without requiring a GPU. Great for systems without NVIDIA graphics.
+
+#### American Female (Piper)
+Best quality: `lessac`, `ljspeech`
+- `amy`, `hfc_female`, `kathleen`, `kristin`, `lessac`, `libritts`, `ljspeech`
+
+#### American Male (Piper)
+Best quality: `ryan`, `norman`
+- `arctic`, `bryce`, `danny`, `hfc_male`, `joe`, `john`, `kusal`, `norman`, `reza`, `ryan`, `sam`
+
+#### British Female (Piper)
+Best quality: `cori`
+- `alba`, `cori`, `jenny`, `southern_female`
+
+#### British Male (Piper)
+Best quality: `alan`, `aru`, `vctk`
+- `alan`, `aru`, `northern_male`, `semaine`, `vctk`
 
 ## Configuration
 
@@ -178,15 +199,29 @@ Voice presets are defined in `src/config.yaml`:
 
 ```yaml
 voices:
+  # Kokoro voice (GPU-accelerated)
   heart:
+    engine: kokoro
     voice: "af_heart"
     speed: 1.0
   
   bella:
+    engine: kokoro
     voice: "af_bella"
     speed: 1.0
   
+  # Piper voice (CPU-optimized)
+  lessac:
+    engine: piper
+    voice: "en_US-lessac-high"
+  
+  norman:
+    engine: piper
+    voice: "en_US-norman-medium"
+    speed: 1.7
+  
   ada:
+    engine: kokoro
     voice: "af_aoede"
     speed: 1.5
     # Optional stinger sound effects
@@ -356,6 +391,8 @@ voice/
 │   ├── __init__.py
 │   ├── cli.py           # Command-line interface
 │   ├── voice_engine.py  # Core TTS engine
+│   ├── kokoro_engine.py # Kokoro TTS (GPU-accelerated)
+│   ├── piper_engine.py  # Piper TTS (CPU-optimized)
 │   ├── audio_utils.py   # Audio playback/saving
 │   ├── server.py        # TCP server for hot mode
 │   ├── client.py        # TCP client for hot mode
@@ -368,14 +405,16 @@ voice/
 
 ## Technical Details
 
-- **Model**: [Kokoro-82M](https://huggingface.co/hexgrad/Kokoro-82M) (82 million parameters)
+- **Kokoro Engine**: [Kokoro-82M](https://huggingface.co/hexgrad/Kokoro-82M) (82M parameters, GPU-accelerated)
+- **Piper Engine**: [Piper](https://github.com/rhasspy/piper) (ONNX models, CPU-optimized)
 - **Framework**: PyTorch 2.9+ with transformers
-- **Sample Rate**: 24kHz
+- **Sample Rate**: 24kHz (Kokoro), 22kHz (Piper)
 - **Format**: WAV (16-bit PCM)
 - **Protocol**: TCP JSON for server mode (port 3124)
 
 ## Acknowledgments
 
-- [Kokoro TTS](https://huggingface.co/hexgrad/Kokoro-82M) by hexgrad - High-quality open-source TTS
+- [Kokoro TTS](https://huggingface.co/hexgrad/Kokoro-82M) by hexgrad - High-quality GPU-accelerated TTS
+- [Piper](https://github.com/rhasspy/piper) by rhasspy - Fast CPU-optimized TTS
 - [PyTorch](https://pytorch.org/) - Deep learning framework
 - [Hugging Face](https://huggingface.co/) - Model hosting and transformers library

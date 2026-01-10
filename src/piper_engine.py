@@ -129,6 +129,7 @@ class PiperEngine:
             Tuple of (audio_data as numpy array, sample_rate)
         """
         from .timing import get_elapsed
+        from piper.config import SynthesisConfig
         
         synth_start = get_elapsed()
         
@@ -136,13 +137,22 @@ class PiperEngine:
         piper_voice = self._load_voice(voice_id)
         self.last_voice_id = voice_id
         
+        # Configure synthesis with speed control
+        # Piper uses length_scale: 1.0 = normal, <1.0 = faster, >1.0 = slower
+        # We invert the speed multiplier so speed=1.5 means 1.5x faster (length_scale=0.67)
+        length_scale = 1.0 / speed if speed > 0 else 1.0
+        syn_config = SynthesisConfig(length_scale=length_scale)
+        
+        if speed != 1.0:
+            log(f"[Piper] Using speed={speed} (length_scale={length_scale:.2f})")
+        
         # Synthesize to temporary WAV file
         with tempfile.NamedTemporaryFile(suffix=".wav", delete=False) as tmp:
             tmp_path = tmp.name
         
         try:
             with wave.open(tmp_path, "wb") as wav_file:
-                piper_voice.synthesize_wav(text, wav_file)
+                piper_voice.synthesize_wav(text, wav_file, syn_config=syn_config)
             
             # Read the audio data
             with wave.open(tmp_path, "rb") as wav_file:

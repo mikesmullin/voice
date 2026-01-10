@@ -233,6 +233,8 @@ voices:
   
   norman:  # favorite
     engine: piper
+    #speed: 1.1
+    speed: 1.7
     voice: "en_US-norman-medium"
   
   reza:
@@ -258,6 +260,7 @@ voices:
   cori:  # favorite
     engine: piper
     voice: "en_GB-cori-medium"
+    speed: 1.7
     # voice: "en_GB-cori-high"
   
   jenny:
@@ -274,6 +277,7 @@ voices:
     engine: piper
     voice: "en_GB-alan-medium"
     # voice: "en_GB-alan-low"
+    speed: 1.4
   
   aru:  # favorite
     engine: piper
