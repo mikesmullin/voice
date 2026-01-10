@@ -8,12 +8,12 @@ voices:
     speed: 1.0
   
   nicole:
-    voice: "af_nicole"
+    voice: "af_nicole" # lusty whisper
     speed: 1.0
   
   alloy:
-    voice: "af_alloy"
-    speed: 1.0
+    voice: "af_alloy" # gender ambiguous but clear
+    speed: 0.8
   
   aoede:
     voice: "af_aoede"
@@ -25,7 +25,7 @@ voices:
   
 
   kore:
-    voice: "af_kore"
+    voice: "af_kore" # clear and authoritative
     speed: 1.0
   
   sarah:
@@ -33,7 +33,7 @@ voices:
     speed: 1.0
   
   nova:
-    voice: "af_nova"
+    voice: "af_nova" # pleasant female nautrally slower
     speed: 1.0
   
   jessica:
@@ -57,11 +57,11 @@ voices:
     speed: 1.0
   
   michael:
-    voice: "am_michael"
+    voice: "am_michael" # clear authoritative male radio voice
     speed: 1.0
   
   puck:
-    voice: "am_puck"
+    voice: "am_puck" # teen male
     speed: 1.0
   
   echo:
@@ -73,19 +73,19 @@ voices:
     speed: 1.0
   
   liam:
-    voice: "am_liam"
+    voice: "am_liam" # black male
     speed: 1.0
   
   onyx:
-    voice: "am_onyx"
+    voice: "am_onyx" # black male (deeper)
     speed: 1.0
   
   santa:
-    voice: "am_santa"
+    voice: "am_santa" # jovial male pretending
     speed: 1.0
   
   adam:
-    voice: "am_adam"
+    voice: "am_adam" # annoying male
     speed: 1.0
   
   # British English Voices
@@ -118,5 +118,5 @@ voices:
     speed: 1.0
   
   daniel:
-    voice: "bm_daniel"
-    speed: 1.0
+    voice: "bm_daniel" # best male broadcaster voice
+    speed: 0.9
