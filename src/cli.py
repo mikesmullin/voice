@@ -268,11 +268,11 @@ def main(args: Optional[list] = None) -> int:
                 print(f"Error: {e}", file=sys.stderr)
                 return 1
 
-        # Process text input from args and STDIN
+        # Process text input from args and optional STDIN.
         text_parts = []
         stdin_only = False
 
-        # Check if text is provided as '-' (STDIN only mode)
+        # A lone '-' means the text should be read from STDIN.
         if (
             parsed_args.text
             and len(parsed_args.text) == 1
@@ -283,15 +283,17 @@ def main(args: Optional[list] = None) -> int:
             # Join all text arguments with spaces
             text_parts.append(" ".join(parsed_args.text))
 
-        # Read from STDIN if available
-        stdin_text = read_stdin()
-        if stdin_text:
-            text_parts.append(stdin_text)
-        elif stdin_only:
-            print(
-                "Error: STDIN input required when using '-' for text", file=sys.stderr
-            )
-            return 1
+        # Read from STDIN only for the explicit '-' convention.
+        if stdin_only:
+            stdin_text = read_stdin()
+            if stdin_text:
+                text_parts.append(stdin_text)
+            else:
+                print(
+                    "Error: STDIN input required when using '-' for text",
+                    file=sys.stderr,
+                )
+                return 1
 
         # Combine all text parts
         final_text = " ".join(text_parts).strip() if text_parts else None

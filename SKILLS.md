@@ -70,7 +70,7 @@ voice heart "Write this to disk with Kokoro." -o heart.wav
 
 ### Read from STDIN
 
-Use `-` as the text argument when stdin should supply the content.
+Use `-` as the text argument when stdin should supply the spoken text.
 
 ```bash
 printf '%s' "Piper stdin example." | voice cori -
