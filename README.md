@@ -29,21 +29,33 @@ Kokoro is still available and still useful, but it benefits much more from `voic
 - Python 3.10-3.12
 - [uv](https://docs.astral.sh/uv/) package manager
 - PortAudio for local playback on Linux
-- Optional: NVIDIA GPU with CUDA 12.x if you want Kokoro acceleration
+- Optional: NVIDIA GPU with CUDA 12.x if you want Kokoro GPU acceleration
 
-### Quick Install
+### Quick Install (Piper only — recommended for macOS)
 
-Install the CLI tool:
+Install without Kokoro — gets you Piper TTS with no PyTorch dependency:
 
 ```bash
 uv tool install --editable . --with pip
 ```
 
+### Install with Kokoro
+
+To also enable Kokoro voices, install with the `kokoro` extra:
+
+```bash
+uv tool install --editable ".[kokoro]" --with pip
+```
+
+On **macOS** (Apple Silicon or Intel), this pulls `torch` from PyPI (CPU/MPS). No CUDA index, no NVIDIA driver required.
+
+On **Linux / Windows**, `torch` is automatically pulled from the PyTorch CUDA 12.9 index for GPU acceleration.
+
 The `--with pip` flag is required for the transformer stack.
 
 ### GPU Support
 
-If you plan to use Kokoro on an NVIDIA GPU, verify CUDA after install:
+If you installed with Kokoro on an NVIDIA GPU, verify CUDA after install:
 
 ```bash
 python -c "import torch; print('CUDA available:', torch.cuda.is_available())"
@@ -77,7 +89,8 @@ Use that file for:
 
 ### macOS
 
-- Piper works well for local CPU usage.
+- Piper works well for local CPU usage and requires no extra dependencies.
+- To use Kokoro on macOS, install with `.[kokoro]` — PyTorch will be pulled from PyPI (CPU/MPS, no CUDA needed). The CUDA index is skipped automatically.
 
 ### Linux
 

@@ -2,10 +2,17 @@
 
 import os
 import signal
+import sys
 import threading
 from typing import Optional
 import numpy as np
 import time
+
+# macOS CoreAudio returns sd.wait() before the hardware finishes draining its
+# buffer, causing the tail of audio to be clipped.  Appending this many
+# seconds of silence ensures all audible content has left the buffer before
+# wait() returns.  0 on other platforms because ALSA/PulseAudio block correctly.
+_PLAYBACK_TAIL_PAD = 0.30 if sys.platform == "darwin" else 0.0
 
 from .timing import log
 
@@ -96,6 +103,9 @@ def play_audio(audio: np.ndarray, sample_rate: int, speed: float = 1.0) -> None:
             audio_to_play = audio
             
         # Play audio with non-blocking mode first to allow driver to initialize
+        if _PLAYBACK_TAIL_PAD > 0:
+            silence = np.zeros(int(sample_rate * _PLAYBACK_TAIL_PAD), dtype=audio_to_play.dtype)
+            audio_to_play = np.concatenate([audio_to_play, silence])
         sd.play(audio_to_play, samplerate=sample_rate, device=default_device, blocking=False)
         
         # Small delay to let playback start

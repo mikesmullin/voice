@@ -19,7 +19,10 @@ logging.getLogger("huggingface_hub").setLevel(logging.ERROR)
 try:
     from kokoro import KPipeline
 except ImportError:
-    raise ImportError("kokoro package not installed. Install with: pip install kokoro")
+    raise ImportError(
+        "kokoro package not installed. Install with the kokoro extra: "
+        "uv tool install --editable '.[kokoro]' --with pip"
+    )
 
 
 class KokoroEngine:
