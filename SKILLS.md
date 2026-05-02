@@ -45,7 +45,7 @@ This file is the fast operator manual for agents using the `voice` CLI.
 ### Direct Synthesis
 
 ```bash
-voice <preset> <text>
+voice [options] <preset> <text>
 ```
 
 Examples:
@@ -58,14 +58,23 @@ voice bella "Use Kokoro when that voice is specifically wanted."
 ### Save to File
 
 ```bash
-voice <preset> <text> -o output.wav
+voice [options] <preset> <text>
 ```
 
 Examples:
 
 ```bash
-voice norman "Write this to disk with Piper." -o norman.wav
-voice heart "Write this to disk with Kokoro." -o heart.wav
+voice -o norman.wav norman "Write this to disk with Piper."
+voice -o heart.wav heart "Write this to disk with Kokoro."
+```
+
+### Adjust Volume
+
+Use `--gain=<value>` to scale the synthesized voice volume before playback or saving.
+
+```bash
+voice --gain=0.6 lessac "Quieter playback."
+voice --gain=1.4 -o daniel.wav daniel "Louder output file."
 ```
 
 ### Read from STDIN
@@ -74,7 +83,7 @@ Use `-` as the text argument when stdin should supply the spoken text.
 
 ```bash
 printf '%s' "Piper stdin example." | voice cori -
-printf '%s' "Kokoro stdin example." | voice daniel -
+printf '%s' "Kokoro stdin example." | voice --config ./src/config.yaml daniel -
 ```
 
 ### List Presets
@@ -99,7 +108,7 @@ voice --info michael
 ### Custom Config
 
 ```bash
-voice --config /path/to/config.yaml <preset> <text>
+voice [options] <preset> <text>
 ```
 
 Example:
@@ -140,7 +149,7 @@ Stingers are optional WAV sound effects played before speech.
 ### Use a Stinger
 
 ```bash
-voice ada "Alert with stinger" --stinger alert
+voice --stinger alert ada "Alert with stinger"
 voice hot ada "Hot mode alert" --stinger error
 ```
 
@@ -159,7 +168,7 @@ Examples:
 
 ```bash
 voice lessac "CPU-friendly default path."
-voice bella "Force Kokoro onto CPU." --cpu
+voice --cpu bella "Force Kokoro onto CPU."
 ```
 
 ## Practical Operator Rules

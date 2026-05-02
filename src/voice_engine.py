@@ -5,7 +5,7 @@ from pathlib import Path
 from typing import Optional
 import yaml
 
-from .audio_utils import play_audio, save_audio
+from .audio_utils import apply_gain, play_audio, save_audio
 from .timing import log
 
 
@@ -152,7 +152,14 @@ class VoiceEngine:
         except Exception as e:
             log(f"[Voice] Warning: Could not play stinger: {e}")
     
-    def synthesize(self, text: str, voice_name: str, output_file: Optional[str] = None, stinger: Optional[str] = None) -> None:
+    def synthesize(
+        self,
+        text: str,
+        voice_name: str,
+        output_file: Optional[str] = None,
+        stinger: Optional[str] = None,
+        gain: float = 1.0,
+    ) -> None:
         """
         Synthesize speech from text using the configured TTS model.
         
@@ -161,6 +168,7 @@ class VoiceEngine:
             voice_name: Voice preset name from config
             output_file: Optional output file path
             stinger: Optional stinger sound effect name
+            gain: Linear gain multiplier for synthesized voice audio
         """
         # Get voice configuration
         voices = self.config.get("voices", {})
@@ -176,13 +184,21 @@ class VoiceEngine:
         
         # Route to appropriate engine
         if engine_type == "kokoro":
-            self._synthesize_kokoro(text, voice_name, voice_config, output_file, stinger)
+            self._synthesize_kokoro(text, voice_name, voice_config, output_file, stinger, gain)
         elif engine_type == "piper":
-            self._synthesize_piper(text, voice_name, voice_config, output_file, stinger)
+            self._synthesize_piper(text, voice_name, voice_config, output_file, stinger, gain)
         else:
             raise ValueError(f"Unsupported engine type: {engine_type}. Supported: 'kokoro', 'piper'")
     
-    def _synthesize_kokoro(self, text: str, voice_name: str, voice_config: dict, output_file: Optional[str], stinger: Optional[str]) -> None:
+    def _synthesize_kokoro(
+        self,
+        text: str,
+        voice_name: str,
+        voice_config: dict,
+        output_file: Optional[str],
+        stinger: Optional[str],
+        gain: float,
+    ) -> None:
         """Synthesize using Kokoro TTS engine."""
         engine = self._get_kokoro_engine()
         
@@ -198,6 +214,7 @@ class VoiceEngine:
         
         # Synthesize audio
         audio_data, sample_rate = engine.synthesize(text, voice_id, speed)
+        audio_data = apply_gain(audio_data, gain)
         
         # Output or playback
         audio_config = self.config.get("audio", {})
@@ -211,7 +228,15 @@ class VoiceEngine:
             if audio_config.get("auto_play", True):
                 play_audio(audio_data, sample_rate, speed)
     
-    def _synthesize_piper(self, text: str, voice_name: str, voice_config: dict, output_file: Optional[str], stinger: Optional[str]) -> None:
+    def _synthesize_piper(
+        self,
+        text: str,
+        voice_name: str,
+        voice_config: dict,
+        output_file: Optional[str],
+        stinger: Optional[str],
+        gain: float,
+    ) -> None:
         """Synthesize using Piper TTS engine (CPU-based)."""
         engine = self._get_piper_engine()
         
@@ -227,6 +252,7 @@ class VoiceEngine:
         
         # Synthesize audio
         audio_data, sample_rate = engine.synthesize(text, voice_id, speed)
+        audio_data = apply_gain(audio_data, gain)
         
         # Output or playback
         audio_config = self.config.get("audio", {})

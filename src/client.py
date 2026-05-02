@@ -13,7 +13,8 @@ def send_synthesis_request(
     host: str = "127.0.0.1",
     port: int = 3124,
     connection_timeout: float = 0.5,
-    stinger: str = None
+    stinger: str = None,
+    gain: float = 1.0,
 ) -> dict:
     """
     Send a synthesis request to the voice server.
@@ -26,6 +27,7 @@ def send_synthesis_request(
         port: Server port
         connection_timeout: Connection timeout in seconds (default: 0.5)
         stinger: Optional stinger name to play before speech
+        gain: Linear gain multiplier for synthesized voice audio
     
     Returns:
         Response dict with 'status' or 'error' key, or None if connection failed
@@ -36,7 +38,8 @@ def send_synthesis_request(
         "voice": voice_name,
         "text": text,
         "output_file": output_file,
-        "stinger": stinger
+        "stinger": stinger,
+        "gain": gain,
     }
     
     client_socket = None

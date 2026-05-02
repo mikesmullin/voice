@@ -70,6 +70,24 @@ def with_interrupt_handler(func):
 # Removed pydub dependency - only supporting WAV format
 
 
+def apply_gain(audio: np.ndarray, gain: float) -> np.ndarray:
+    """
+    Apply linear gain to audio and clamp to the valid playback range.
+
+    Args:
+        audio: Audio data as numpy array
+        gain: Linear gain multiplier
+
+    Returns:
+        Gain-adjusted audio array
+    """
+    if gain == 1.0:
+        return audio
+
+    adjusted_audio = np.asarray(audio, dtype=np.float32) * gain
+    return np.clip(adjusted_audio, -1.0, 1.0)
+
+
 def play_audio(audio: np.ndarray, sample_rate: int, speed: float = 1.0) -> None:
     """
     Play audio through the default audio device.

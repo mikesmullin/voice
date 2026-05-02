@@ -17,6 +17,50 @@ from .voice_engine import VoiceEngine
 from . import timing
 
 
+TOP_LEVEL_HELP = """voice
+
+Usage:
+    voice [options] <preset> <text>
+    voice [options] <preset> -
+    voice <command> [options]
+
+DIRECT synthesis:
+    <preset> <text>       Speak the provided text immediately
+    <preset> -            Read the spoken text from STDIN
+
+SERVER commands:
+    serve                 Start a warm synthesis server
+    hot                   Send a synthesis request to the running server
+
+Options:
+    -o, --output FILE     Save audio to WAV instead of playing it
+    -c, --config FILE     Use a custom config.yaml
+    -l, --list            List available voice presets
+    -i, --info PRESET     Show preset details
+    --cpu                 Force CPU usage instead of GPU
+    --stinger NAME        Play a configured stinger before speech
+    --gain VALUE          Apply linear gain to synthesized voice audio
+    -v, --version         Show version
+    -h, --help            Show this help
+
+Examples:
+    voice lessac "Hello from Piper."
+    voice --gain=1.2 alan "Louder playback"
+    printf '%s' "From stdin" | voice --config ./src/config.yaml cori -
+    voice --list
+    voice --info alan
+    voice serve
+    voice hot bella "Server request" --gain=0.8
+
+Use "voice <command> --help" for command-specific help.
+"""
+
+
+def print_top_level_help() -> None:
+    """Print custom top-level CLI help."""
+    print(TOP_LEVEL_HELP.rstrip())
+
+
 def read_stdin() -> Optional[str]:
     """
     Read text from STDIN if available.
@@ -42,10 +86,10 @@ def parse_args(args: Optional[list] = None) -> argparse.Namespace:
     # Get args from sys.argv if not provided
     if args is None:
         args = sys.argv[1:]
-    
+
     # Check if first argument is a known subcommand
     # If not, treat as default synthesis mode
-    known_subcommands = ['serve', 'hot', 'help', '--help', '-h', '--version', '-v']
+    known_subcommands = ['serve', 'hot']
     is_subcommand = len(args) > 0 and args[0] in known_subcommands
     
     if is_subcommand:
@@ -103,6 +147,9 @@ def parse_args(args: Optional[list] = None) -> argparse.Namespace:
         hot_parser.add_argument(
             "--stinger", metavar="NAME", help="Stinger sound effect to play before speech (e.g., alert, error)"
         )
+        hot_parser.add_argument(
+            "--gain", type=float, default=1.0, metavar="VALUE", help="Adjust synthesized voice volume with a linear gain multiplier"
+        )
         
         return parser.parse_args(args)
     else:
@@ -111,6 +158,10 @@ def parse_args(args: Optional[list] = None) -> argparse.Namespace:
             prog="voice",
             description="Text-to-speech with voice presets",
             formatter_class=argparse.RawDescriptionHelpFormatter,
+            add_help=False,
+        )
+        parser.add_argument(
+            "-h", "--help", action="store_true", help="Show help"
         )
         parser.add_argument(
             "preset", nargs="?", help="Voice preset name (e.g., heart, bella, adam)"
@@ -118,7 +169,7 @@ def parse_args(args: Optional[list] = None) -> argparse.Namespace:
         parser.add_argument(
             "text",
             nargs="*",
-            help="Text to synthesize (multiple arguments will be joined with spaces, use '-' to read only from STDIN)",
+            help="Text to synthesize; multiple arguments are joined with spaces, or use '-' to read from STDIN",
         )
         parser.add_argument(
             "-o",
@@ -142,10 +193,20 @@ def parse_args(args: Optional[list] = None) -> argparse.Namespace:
         parser.add_argument(
             "--stinger", metavar="NAME", help="Stinger sound effect to play before speech (e.g., alert, error)"
         )
+        parser.add_argument(
+            "--gain", type=float, default=1.0, metavar="VALUE", help="Adjust synthesized voice volume with a linear gain multiplier (1.0 = unchanged)"
+        )
         
         parsed = parser.parse_args(args)
         parsed.command = None  # Mark as default command
         return parsed
+
+
+def validate_gain(gain: float) -> float:
+    """Validate the CLI gain parameter."""
+    if gain < 0:
+        raise ValueError("--gain must be greater than or equal to 0")
+    return gain
 
 
 def main(args: Optional[list] = None) -> int:
@@ -159,12 +220,18 @@ def main(args: Optional[list] = None) -> int:
         Exit code (0 for success, 1 for error)
     """
     try:
-        # Check if no arguments provided, show help
+        # Show custom top-level help for the default entrypoint.
         if args is None and len(sys.argv) == 1:
-            parse_args(["--help"])
+            print_top_level_help()
             return 0
 
         parsed_args = parse_args(args)
+
+        if getattr(parsed_args, 'command', None) is None and getattr(parsed_args, 'help', False):
+            print_top_level_help()
+            return 0
+
+        gain = validate_gain(getattr(parsed_args, 'gain', 1.0))
         
         # Handle serve subcommand
         if parsed_args.command == "serve":
@@ -190,7 +257,8 @@ def main(args: Optional[list] = None) -> int:
                 host=parsed_args.host,
                 port=parsed_args.port,
                 connection_timeout=0.5,
-                stinger=getattr(parsed_args, 'stinger', None)
+                stinger=getattr(parsed_args, 'stinger', None),
+                gain=gain,
             )
             
             # If server connection failed (None), fall back to Piper CPU synthesis
@@ -213,7 +281,8 @@ def main(args: Optional[list] = None) -> int:
                         text=text,
                         voice_name=fallback_voice,
                         output_file=getattr(parsed_args, 'output', None),
-                        stinger=getattr(parsed_args, 'stinger', None)
+                        stinger=getattr(parsed_args, 'stinger', None),
+                        gain=gain,
                     )
                     return 0
                 except Exception as e:
@@ -307,7 +376,8 @@ def main(args: Optional[list] = None) -> int:
             print("Use 'voice --help' for usage information", file=sys.stderr)
             print("\nQuick start:")
             print("  voice --list                    # List available voices")
-            print('  voice glados "Hello, world!"    # Synthesize speech')
+            print('  voice lessac "Hello, world!"    # Synthesize speech')
+            print('  printf "%s" "Hello" | voice cori -  # Read spoken text from STDIN')
             return 1
 
         # Synthesize speech
@@ -315,7 +385,8 @@ def main(args: Optional[list] = None) -> int:
             text=final_text,
             voice_name=parsed_args.preset,
             output_file=parsed_args.output,
-            stinger=getattr(parsed_args, 'stinger', None)
+            stinger=getattr(parsed_args, 'stinger', None),
+            gain=gain,
         )
 
         return 0
@@ -323,6 +394,9 @@ def main(args: Optional[list] = None) -> int:
     except KeyboardInterrupt:
         print("\nInterrupted by user", file=sys.stderr)
         return 130
+    except ValueError as e:
+        print(f"Error: {e}", file=sys.stderr)
+        return 1
     except Exception as e:
         print(f"Error: {e}", file=sys.stderr)
         import traceback

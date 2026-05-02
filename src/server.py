@@ -135,6 +135,7 @@ class VoiceServer:
             text = request.get("text")
             output_file = request.get("output_file")
             stinger = request.get("stinger")
+            gain = request.get("gain", 1.0)
             
             if not voice_name or not text:
                 client_socket.sendall(b'{"error": "Missing voice or text"}\n')
@@ -149,7 +150,7 @@ class VoiceServer:
             
             # Synthesize speech
             try:
-                self.engine.synthesize(text, voice_name, output_file, stinger)
+                self.engine.synthesize(text, voice_name, output_file, stinger, gain)
                 response = {"status": "success"}
             except Exception as e:
                 log(f"[Server] Synthesis error: {e}")
