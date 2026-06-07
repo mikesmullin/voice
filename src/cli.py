@@ -31,6 +31,7 @@ DIRECT synthesis:
 SERVER commands:
     serve                 Start a warm synthesis server
     hot                   Send a synthesis request to the running server
+    http                  Start HTTP streaming service for browser audio
 
 Options:
     -o, --output FILE     Save audio to WAV instead of playing it
@@ -89,7 +90,7 @@ def parse_args(args: Optional[list] = None) -> argparse.Namespace:
 
     # Check if first argument is a known subcommand
     # If not, treat as default synthesis mode
-    known_subcommands = ['serve', 'hot']
+    known_subcommands = ['serve', 'hot', 'http']
     is_subcommand = len(args) > 0 and args[0] in known_subcommands
     
     if is_subcommand:
@@ -149,6 +150,24 @@ def parse_args(args: Optional[list] = None) -> argparse.Namespace:
         )
         hot_parser.add_argument(
             "--gain", type=float, default=1.0, metavar="VALUE", help="Adjust synthesized voice volume with a linear gain multiplier"
+        )
+
+        # HTTP subcommand
+        http_parser = subparsers.add_parser(
+            "http",
+            help="HTTP streaming service for browser-friendly audio"
+        )
+        http_parser.add_argument(
+            "-c", "--config", metavar="FILE", help="Path to custom config.yaml file"
+        )
+        http_parser.add_argument(
+            "--host", default="127.0.0.1", help="Host to bind to (default: 127.0.0.1)"
+        )
+        http_parser.add_argument(
+            "--port", type=int, default=3040, help="Port to bind to (default: 3040)"
+        )
+        http_parser.add_argument(
+            "--gpu", action="store_true", help="Use GPU for supported engines (default: CPU)"
         )
         
         return parser.parse_args(args)
@@ -298,6 +317,18 @@ def main(args: Optional[list] = None) -> int:
                 return 1
             
             # Success
+            return 0
+
+        # Handle http subcommand
+        if parsed_args.command == "http":
+            from .http_service import start_http_service
+
+            start_http_service(
+                config_path=parsed_args.config,
+                host=parsed_args.host,
+                port=parsed_args.port,
+                force_cpu=not parsed_args.gpu,
+            )
             return 0
 
         # Start timing for normal synthesis

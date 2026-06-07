@@ -1,0 +1,351 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Voice HTTP Streaming Demo</title>
+  <style>
+    :root {
+      --bg: #070b14;
+      --panel: #0f1629;
+      --text: #e8f3ff;
+      --muted: #8ea4c4;
+      --accent: #14f1d9;
+      --accent-2: #2ef0ff;
+      --border: #2a3b5f;
+      --input-bg: #0a1225;
+      --input-border: #2d4f7a;
+      --input-focus: #ff4fd8;
+    }
+
+    * { box-sizing: border-box; }
+
+    body {
+      margin: 0;
+      min-height: 100vh;
+      font-family: "Segoe UI", "Helvetica Neue", sans-serif;
+      color: var(--text);
+      background:
+        radial-gradient(900px 500px at 10% -10%, rgba(20, 241, 217, 0.25) 0%, transparent 60%),
+        radial-gradient(900px 500px at 100% 0%, rgba(46, 240, 255, 0.22) 0%, transparent 45%),
+        radial-gradient(600px 400px at 50% 100%, rgba(255, 79, 216, 0.18) 0%, transparent 55%),
+        var(--bg);
+      display: grid;
+      place-items: center;
+      padding: 24px;
+    }
+
+    .card {
+      width: min(760px, 100%);
+      background: var(--panel);
+      border: 1px solid var(--border);
+      border-radius: 14px;
+      box-shadow:
+        0 16px 38px rgba(2, 8, 22, 0.65),
+        0 0 0 1px rgba(20, 241, 217, 0.08),
+        0 0 30px rgba(46, 240, 255, 0.12);
+      padding: 20px;
+    }
+
+    h1 {
+      margin: 0 0 8px;
+      font-size: 1.35rem;
+    }
+
+    p {
+      margin: 0 0 16px;
+      color: var(--muted);
+    }
+
+    .grid {
+      display: grid;
+      gap: 12px;
+      grid-template-columns: 1fr 1fr;
+      margin-bottom: 12px;
+    }
+
+    .grid .full {
+      grid-column: 1 / -1;
+    }
+
+    label {
+      display: block;
+      font-size: 0.85rem;
+      color: var(--muted);
+      margin-bottom: 6px;
+    }
+
+    input, select, button {
+      width: 100%;
+      border: 1px solid var(--input-border);
+      border-radius: 10px;
+      padding: 10px 12px;
+      font-size: 0.95rem;
+      background: var(--input-bg);
+      color: var(--text);
+    }
+
+    input:focus, select:focus {
+      outline: none;
+      border-color: var(--accent-2);
+      box-shadow: 0 0 0 3px rgba(46, 240, 255, 0.16);
+    }
+
+    button {
+      background: linear-gradient(120deg, #14f1d9 0%, #2ef0ff 45%, #ff4fd8 100%);
+      border-color: transparent;
+      color: #031018;
+      font-weight: 600;
+      cursor: pointer;
+      text-shadow: none;
+      box-shadow: 0 0 18px rgba(46, 240, 255, 0.35);
+    }
+
+    button:hover {
+      filter: brightness(1.06);
+      box-shadow: 0 0 24px rgba(255, 79, 216, 0.4);
+    }
+
+    #text {
+      border: 2px solid var(--accent);
+      color: #d7fbff;
+      font-weight: 600;
+      transition: border-color 0.2s ease, box-shadow 0.2s ease;
+    }
+
+    #text:focus {
+      outline: none;
+      border-color: var(--input-focus);
+      box-shadow: 0 0 0 4px rgba(255, 79, 216, 0.2);
+    }
+
+    #text.rainbow-typing {
+      background-image: linear-gradient(
+        90deg,
+        #ef4444,
+        #f59e0b,
+        #10b981,
+        #3b82f6,
+        #8b5cf6,
+        #ef4444
+      );
+      background-size: 300% 100%;
+      animation: rainbow-shift 2.4s linear infinite;
+      -webkit-background-clip: text;
+      background-clip: text;
+      color: transparent;
+      -webkit-text-fill-color: transparent;
+      caret-color: #d7fbff;
+    }
+
+    .status {
+      margin-top: 10px;
+      font-size: 0.9rem;
+      color: var(--muted);
+      min-height: 1.2em;
+    }
+
+    .latency {
+      margin-top: 8px;
+      font-size: 0.9rem;
+      color: #6ef8e7;
+      min-height: 1.2em;
+      font-weight: 600;
+    }
+
+    audio {
+      width: 100%;
+      margin-top: 14px;
+    }
+
+    @keyframes rainbow-shift {
+      0% { background-position: 0% 50%; }
+      100% { background-position: 100% 50%; }
+    }
+
+    @media (max-width: 700px) {
+      .grid { grid-template-columns: 1fr; }
+    }
+  </style>
+</head>
+<body>
+  <main class="card">
+    <h1>Voice HTTP Streaming Demo</h1>
+    <p>
+      Start the server with <strong>voice http</strong>, then synthesize speech from the browser.
+      Defaults are Piper + lessac.
+    </p>
+
+    <form id="tts-form">
+      <div class="grid">
+        <div class="full">
+          <label for="base">Base URL</label>
+          <input id="base" name="base" value="http://127.0.0.1:3040" />
+        </div>
+
+        <div>
+          <label for="engine">Engine</label>
+          <select id="engine" name="engine">
+            <option value="piper" selected>Piper</option>
+            <option value="kokoro">Kokoro</option>
+          </select>
+        </div>
+
+        <div>
+          <label for="voice">Voice Preset</label>
+          <select id="voice" name="voice"></select>
+        </div>
+
+        <div class="full">
+          <label for="text">Text</label>
+          <input id="text" name="text" value="Hello from voice HTTP streaming." />
+        </div>
+
+        <div>
+          <label for="gain">Gain</label>
+          <input id="gain" name="gain" type="number" step="0.1" min="0" value="1.0" />
+        </div>
+
+        <div>
+          <label>&nbsp;</label>
+          <button type="submit">Generate Audio</button>
+        </div>
+      </div>
+    </form>
+
+    <div id="status" class="status"></div>
+    <div id="latency" class="latency">Start latency: —</div>
+    <audio id="player" controls preload="none"></audio>
+  </main>
+
+  <script>
+    const form = document.getElementById("tts-form");
+    const status = document.getElementById("status");
+    const latency = document.getElementById("latency");
+    const player = document.getElementById("player");
+    const textInput = document.getElementById("text");
+    const engineSelect = document.getElementById("engine");
+    const voiceSelect = document.getElementById("voice");
+
+    let currentObjectUrl = null;
+
+    const voiceOptionsByEngine = {
+      piper: ["lessac", "norman", "cori", "alan", "aru", "vctk"],
+      kokoro: ["bella", "heart", "michael", "daniel"],
+    };
+
+    function updateVoiceOptions() {
+      const engine = engineSelect.value;
+      const options = voiceOptionsByEngine[engine] || voiceOptionsByEngine.piper;
+      const previousValue = voiceSelect.value;
+
+      voiceSelect.innerHTML = "";
+      for (const preset of options) {
+        const option = document.createElement("option");
+        option.value = preset;
+        option.textContent = preset;
+        voiceSelect.appendChild(option);
+      }
+
+      if (options.includes(previousValue)) {
+        voiceSelect.value = previousValue;
+      } else {
+        voiceSelect.value = options[0];
+      }
+    }
+
+    function updateTextInputEffect() {
+      const isFocused = document.activeElement === textInput;
+      const hasText = textInput.value.trim().length > 0;
+      textInput.classList.toggle("rainbow-typing", isFocused && hasText);
+    }
+
+    function waitForPlaybackStart(audioElement, startedAt) {
+      return new Promise((resolve, reject) => {
+        let settled = false;
+
+        const complete = (fn, value) => {
+          if (settled) {
+            return;
+          }
+          settled = true;
+          clearTimeout(timeoutId);
+          audioElement.removeEventListener("playing", onPlaying);
+          audioElement.removeEventListener("error", onError);
+          fn(value);
+        };
+
+        const onPlaying = () => {
+          complete(resolve, performance.now() - startedAt);
+        };
+
+        const onError = () => {
+          complete(reject, new Error("Audio playback failed to start."));
+        };
+
+        const timeoutId = setTimeout(() => {
+          complete(reject, new Error("Timed out waiting for playback to begin."));
+        }, 15000);
+
+        audioElement.addEventListener("playing", onPlaying);
+        audioElement.addEventListener("error", onError);
+      });
+    }
+
+    textInput.addEventListener("focus", updateTextInputEffect);
+    textInput.addEventListener("blur", updateTextInputEffect);
+    textInput.addEventListener("input", updateTextInputEffect);
+    engineSelect.addEventListener("change", updateVoiceOptions);
+
+    updateVoiceOptions();
+    updateTextInputEffect();
+
+    form.addEventListener("submit", async (event) => {
+      event.preventDefault();
+      const requestStartedAt = performance.now();
+
+      const base = document.getElementById("base").value.trim().replace(/\/$/, "");
+      const engine = document.getElementById("engine").value.trim() || "piper";
+      const voice = document.getElementById("voice").value.trim() || "lessac";
+      const text = document.getElementById("text").value.trim();
+      const gain = document.getElementById("gain").value.trim() || "1.0";
+
+      if (!text) {
+        status.textContent = "Text is required.";
+        return;
+      }
+
+      const params = new URLSearchParams({ q: text, engine, voice, gain });
+      const url = `${base}/speak?${params.toString()}`;
+
+      status.textContent = "Generating audio...";
+      latency.textContent = "Start latency: measuring...";
+
+      try {
+        const response = await fetch(url);
+        if (!response.ok) {
+          const errorBody = await response.text();
+          throw new Error(`HTTP ${response.status}: ${errorBody}`);
+        }
+
+        const blob = await response.blob();
+        if (currentObjectUrl) {
+          URL.revokeObjectURL(currentObjectUrl);
+        }
+
+        currentObjectUrl = URL.createObjectURL(blob);
+        player.src = currentObjectUrl;
+        const playbackStartPromise = waitForPlaybackStart(player, requestStartedAt);
+        await player.play();
+        const playbackStartMs = await playbackStartPromise;
+        const roundedMs = Math.round(playbackStartMs);
+        status.textContent = `Playing ${blob.size} bytes of WAV audio.`;
+        latency.textContent = `Start latency: ${roundedMs} ms from click to first playback.`;
+      } catch (error) {
+        status.textContent = `Request failed: ${error.message}`;
+        latency.textContent = "Start latency: unavailable";
+      }
+    });
+  </script>
+</body>
+</html>

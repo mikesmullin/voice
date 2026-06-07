@@ -81,6 +81,36 @@ Use that file for:
 - If you need repeated low-latency Kokoro generation, use `voice serve` and then `voice hot`.
 - If you mostly want reliable local TTS from the shell, use Piper presets first.
 
+## HTTP Streaming Service
+
+Want to self-host a free/open-source [ElevenLabs](https://elevenlabs.io/) clone?
+
+You can expose speech synthesis over HTTP for browser playback:
+
+```bash
+voice http
+```
+
+### Testing HTTP Streaming
+
+#### via **cURL**:
+
+```bash
+curl "http://127.0.0.1:3040/speak?q=hello%20world&engine=piper&voice=lessac" --output speech.wav
+```
+
+The response is `audio/wav`, suitable for modern HTML5 `<audio>` playback.
+
+#### via **Browser**:
+
+Open directly in a browser after starting `voice http`.
+
+```bash
+chrome test/streaming_audio.html
+```
+
+Submit text, and confirm audio plays via the `<audio>` element.
+
 ## Platform Notes
 
 ### Windows
