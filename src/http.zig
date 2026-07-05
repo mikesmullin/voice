@@ -13,25 +13,23 @@ const daemon_mod = @import("daemon.zig");
 const wav = @import("audio/wav.zig");
 const cli = @import("cli.zig");
 const paths = @import("paths.zig");
+const timing = @import("timing.zig");
 
 pub fn serve(daemon: *daemon_mod.Daemon, io: std.Io, port: u16, log: *std.Io.Writer) !void {
     const addr = try std.Io.net.IpAddress.parseIp4("127.0.0.1", port);
     var server = try addr.listen(io, .{});
     defer server.socket.close(io);
 
-    try log.print("[Daemon] HTTP API listening on 127.0.0.1:{d}\n", .{port});
-    try log.flush();
+    timing.logf(log, io, "[Daemon] HTTP API listening on 127.0.0.1:{d}\n", .{port});
 
     while (true) {
         var conn = server.accept(io) catch |err| {
-            try log.print("[HTTP] accept error: {t}\n", .{err});
-            try log.flush();
+            timing.logf(log, io, "[HTTP] accept error: {t}\n", .{err});
             continue;
         };
         defer conn.close(io);
         handleConnection(daemon, &conn, io, log) catch |err| {
-            try log.print("[HTTP] request error: {t}\n", .{err});
-            try log.flush();
+            timing.logf(log, io, "[HTTP] request error: {t}\n", .{err});
         };
     }
 }
@@ -106,7 +104,6 @@ fn respondVoices(daemon: *daemon_mod.Daemon, request: *std.http.Server.Request) 
 }
 
 fn handleSpeak(daemon: *daemon_mod.Daemon, request: *std.http.Server.Request, io: std.Io, log: *std.Io.Writer) !void {
-    _ = io;
     var frame_arena = std.heap.ArenaAllocator.init(daemon.allocator);
     defer frame_arena.deinit();
     const alloc = frame_arena.allocator();
@@ -139,30 +136,28 @@ fn handleSpeak(daemon: *daemon_mod.Daemon, request: *std.http.Server.Request, io
     } else 1.0;
 
     if (std.mem.eql(u8, mode, "download")) {
+        const t0 = timing.elapsedSeconds(io);
         const result = daemon.synthesize(alloc, preset, text) catch |err| {
-            try log.print("[HTTP] synth error: {t}\n", .{err});
-            try log.flush();
+            timing.logf(log, io, "[HTTP] synth error: {t}\n", .{err});
             try request.respond("{\"error\":\"synthesis failed\"}\n", .{ .status = .internal_server_error });
             return;
         };
         cli.applyGain(result.samples, std.math.clamp(gain, 0.0, 2.0));
         const wav_bytes = try wav.encodeMono16(alloc, result.sample_rate, result.samples);
-        try log.print("[HTTP] /speak {s} (download): {d} samples\n", .{ voice_name, result.samples.len });
-        try log.flush();
+        timing.logf(log, io, "[HTTP] /speak {s} (download): {d} samples ({d:.2}s)\n", .{ voice_name, result.samples.len, timing.elapsedSeconds(io) - t0 });
         try request.respond(wav_bytes, .{
             .extra_headers = &.{.{ .name = "content-type", .value = "audio/wav" }},
         });
         return;
     }
 
+    const t0 = timing.elapsedSeconds(io);
     const n = daemon.synthesizeAndPlay(preset, text, true) catch |err| {
-        try log.print("[HTTP] synth error: {t}\n", .{err});
-        try log.flush();
+        timing.logf(log, io, "[HTTP] synth error: {t}\n", .{err});
         try request.respond("{\"error\":\"synthesis failed\"}\n", .{ .status = .internal_server_error });
         return;
     };
-    try log.print("[HTTP] /speak {s}: {d} samples\n", .{ voice_name, n });
-    try log.flush();
+    timing.logf(log, io, "[HTTP] /speak {s}: {d} samples ({d:.2}s)\n", .{ voice_name, n, timing.elapsedSeconds(io) - t0 });
 
     try request.respond("{\"status\":\"ok\"}\n", .{
         .extra_headers = &.{.{ .name = "content-type", .value = "application/json" }},

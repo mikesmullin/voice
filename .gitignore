@@ -27,6 +27,9 @@ Thumbs.db
 *.ogg
 *.mp3
 
+# Stinger/sfx audio files (kept on disk, not committed)
+sfx/
+
 # Model files (fetched via ./scripts/fetch-models.sh, not committed)
 models/
 

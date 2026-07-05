@@ -1,4 +1,4 @@
-# 🗣️ voice v2
+# 🗣️ voice
 
 Always-on local text-to-speech CLI + daemon (Piper + Kokoro), written in
 Zig + ONNX Runtime. CLI, unix socket, HTTP API, and a browser SPA all

@@ -15,6 +15,7 @@ const daemon_mod = @import("daemon.zig");
 const http_mod = @import("http.zig");
 const cli = @import("cli.zig");
 const paths = @import("paths.zig");
+const timing = @import("timing.zig");
 
 fn httpThread(d: *daemon_mod.Daemon, io: std.Io) void {
     var buf: [4096]u8 = undefined;
@@ -25,6 +26,7 @@ fn httpThread(d: *daemon_mod.Daemon, io: std.Io) void {
 }
 
 pub fn main(init: std.process.Init) !void {
+    timing.startTimer(init.io);
     const arena = init.arena.allocator();
     const args = try init.minimal.args.toSlice(arena);
 
@@ -164,8 +166,7 @@ pub fn main(init: std.process.Init) !void {
         const cfg = try config_mod.Config.load(arena, init.io, config_path);
         var d = try daemon_mod.Daemon.init(arena, init.io, cfg);
         try d.preload(stdout);
-        try stdout.print("[Daemon] Preload complete, engines ready\n", .{});
-        try stdout.flush();
+        timing.logf(stdout, init.io, "[Daemon] Preload complete, engines ready\n", .{});
 
         if (http_enabled) {
             _ = try std.Thread.spawn(.{}, httpThread, .{ &d, init.io });
@@ -224,20 +225,25 @@ pub fn main(init: std.process.Init) !void {
     };
 
     if (is_local) {
+        timing.logf(stdout, init.io, "[Voice] Loading '{s}' ({s}) standalone...\n", .{ resolved.preset_name, preset.engine });
         var d = try daemon_mod.Daemon.init(arena, init.io, cfg);
         d.force_cpu = opts.cpu;
         const result = try d.synthesize(arena, preset, resolved.text);
         cli.applyGain(result.samples, opts.gain);
+        timing.logf(stdout, init.io, "[Voice] Synthesized {d} samples ({d:.2}s audio)\n", .{
+            result.samples.len,
+            @as(f64, @floatFromInt(result.samples.len)) / @as(f64, @floatFromInt(result.sample_rate)),
+        });
 
         if (opts.output) |out_path| {
             try wav.writeMono16(init.io, out_path, result.sample_rate, result.samples);
-            try stdout.print("[Voice] Saved to: {s}\n", .{out_path});
+            timing.logf(stdout, init.io, "[Voice] Saved to: {s}\n", .{out_path});
         } else {
             var out = audio_output.Output.init(arena);
             try out.play(result.samples, result.sample_rate);
             out.drain(result.sample_rate);
+            timing.logf(stdout, init.io, "[Voice] Playback complete\n", .{});
         }
-        try stdout.flush();
         return;
     }
 
@@ -252,6 +258,7 @@ pub fn main(init: std.process.Init) !void {
 
     const socket_path = "/tmp/presence-voice.sock";
     const addr = std.Io.net.UnixAddress.init(socket_path) catch unreachable;
+    timing.logf(stdout, init.io, "[Client] Connecting to unix://{s}...\n", .{socket_path});
     var conn = addr.connect(init.io) catch {
         try stdout.print("error: presence-voice daemon is not reachable\n       (unix://{s})\n       Start it with: voice serve\n", .{socket_path});
         try stdout.flush();
@@ -263,13 +270,18 @@ pub fn main(init: std.process.Init) !void {
     var writer = conn.writer(init.io, &write_buf);
     try writer.interface.print("{s}\t{s}\n", .{ resolved.preset_name, resolved.text });
     try writer.interface.flush();
+    timing.logf(stdout, init.io, "[Client] Request sent, waiting for response...\n", .{});
 
     var read_buf: [4096]u8 = undefined;
     var reader = conn.reader(init.io, &read_buf);
+    _ = try reader.interface.peekByte(); // blocks until the first byte arrives
+    timing.logf(stdout, init.io, "[Client] First byte received\n", .{});
     const line = try reader.interface.takeDelimiterExclusive('\n');
+    timing.logf(stdout, init.io, "[Client] Last byte received ({d} bytes)\n", .{line.len});
     if (std.mem.startsWith(u8, line, "ERR")) {
         try stdout.print("error: {s}\n", .{line});
         try stdout.flush();
         std.process.exit(1);
     }
+    timing.logf(stdout, init.io, "[Client] Done\n", .{});
 }

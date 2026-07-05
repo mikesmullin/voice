@@ -21,6 +21,7 @@ const piper = @import("engines/piper.zig");
 const ort = @import("engines/onnxruntime.zig");
 const audio_output = @import("audio/output.zig");
 const paths = @import("paths.zig");
+const timing = @import("timing.zig");
 
 // TODO: move to config.yaml once the v2 schema for model locations is
 // decided (see tmp/PHASE3_PLAN.md "Still open").
@@ -79,13 +80,13 @@ pub const Daemon = struct {
     pub fn preload(self: *Daemon, log: *std.Io.Writer) !void {
         for (self.config.preload.items) |name| {
             const preset = self.config.getPreset(name) orelse {
-                try log.print("[Daemon] preload skipped: preset '{s}' not found in config\n", .{name});
-                try log.flush();
+                timing.logf(log, self.io, "[Daemon] preload skipped: preset '{s}' not found in config\n", .{name});
                 continue;
             };
-            try log.print("[Daemon] preloading '{s}' ({s})...\n", .{ name, preset.engine });
-            try log.flush();
+            timing.logf(log, self.io, "[Daemon] preloading '{s}' ({s})...\n", .{ name, preset.engine });
+            const t0 = timing.elapsedSeconds(self.io);
             _ = try self.synthesizeAndPlay(preset, "Ready.", false);
+            timing.logf(log, self.io, "[Daemon] '{s}' ready ({d:.2}s)\n", .{ name, timing.elapsedSeconds(self.io) - t0 });
         }
     }
 
@@ -129,20 +130,17 @@ pub const Daemon = struct {
         var server = try addr.listen(self.io, .{});
         defer server.socket.close(self.io);
 
-        try log.print("[Daemon] Listening on unix://{s}\n", .{socket_path});
-        try log.print("presence-voice ready. Use 'voice <preset> <text>' to synthesize.\n", .{});
-        try log.flush();
+        timing.logf(log, self.io, "[Daemon] Listening on unix://{s}\n", .{socket_path});
+        timing.logf(log, self.io, "presence-voice ready. Use 'voice <preset> <text>' to synthesize.\n", .{});
 
         while (true) {
             var conn = server.accept(self.io) catch |err| {
-                try log.print("[Daemon] accept error: {t}\n", .{err});
-                try log.flush();
+                timing.logf(log, self.io, "[Daemon] accept error: {t}\n", .{err});
                 continue;
             };
             defer conn.close(self.io);
             self.handleConnection(&conn, log) catch |err| {
-                try log.print("[Daemon] request error: {t}\n", .{err});
-                try log.flush();
+                timing.logf(log, self.io, "[Daemon] request error: {t}\n", .{err});
             };
         }
     }
@@ -161,9 +159,9 @@ pub const Daemon = struct {
             return;
         };
 
+        const t0 = timing.elapsedSeconds(self.io);
         const n = try self.synthesizeAndPlay(preset, text, true);
-        try log.print("[Daemon] {s}: {d} samples\n", .{ preset_name, n });
-        try log.flush();
+        timing.logf(log, self.io, "[Daemon] {s}: {d} samples ({d:.2}s)\n", .{ preset_name, n, timing.elapsedSeconds(self.io) - t0 });
         try writeResponse(conn, self.io, "OK\n");
     }
 
