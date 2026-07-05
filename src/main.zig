@@ -10,6 +10,7 @@ const ort = @import("engines/onnxruntime.zig");
 const wav = @import("audio/wav.zig");
 const config_mod = @import("config.zig");
 const audio_output = @import("audio/output.zig");
+const daemon_mod = @import("daemon.zig");
 
 pub fn main(init: std.process.Init) !void {
     const arena = init.arena.allocator();
@@ -134,6 +135,17 @@ pub fn main(init: std.process.Init) !void {
         out.drain(24000);
         try stdout.print("[Audio] played through persistent PulseAudio stream\n", .{});
         try stdout.flush();
+        return;
+    }
+
+    if (args.len > 1 and std.mem.eql(u8, args[1], "serve")) {
+        const config_path = if (args.len > 2) args[2] else "config.yaml";
+        const cfg = try config_mod.Config.load(arena, init.io, config_path);
+        var d = try daemon_mod.Daemon.init(arena, init.io, cfg);
+        try d.preload(stdout);
+        try stdout.print("[Daemon] Preload complete, engines ready\n", .{});
+        try stdout.flush();
+        try d.serve("/tmp/presence-voice.sock", stdout);
         return;
     }
 
