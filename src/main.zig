@@ -11,6 +11,15 @@ const wav = @import("audio/wav.zig");
 const config_mod = @import("config.zig");
 const audio_output = @import("audio/output.zig");
 const daemon_mod = @import("daemon.zig");
+const http_mod = @import("http.zig");
+
+fn httpThread(d: *daemon_mod.Daemon, io: std.Io) void {
+    var buf: [4096]u8 = undefined;
+    var w = std.Io.File.stdout().writer(io, &buf);
+    http_mod.serve(d, io, 3124, &w.interface) catch |err| {
+        std.debug.print("[HTTP] fatal: {t}\n", .{err});
+    };
+}
 
 pub fn main(init: std.process.Init) !void {
     const arena = init.arena.allocator();
@@ -139,12 +148,25 @@ pub fn main(init: std.process.Init) !void {
     }
 
     if (args.len > 1 and std.mem.eql(u8, args[1], "serve")) {
-        const config_path = if (args.len > 2) args[2] else "config.yaml";
+        var http_enabled = false;
+        var config_path: []const u8 = "config.yaml";
+        for (args[2..]) |a| {
+            if (std.mem.eql(u8, a, "--http")) {
+                http_enabled = true;
+            } else {
+                config_path = a;
+            }
+        }
+
         const cfg = try config_mod.Config.load(arena, init.io, config_path);
         var d = try daemon_mod.Daemon.init(arena, init.io, cfg);
         try d.preload(stdout);
         try stdout.print("[Daemon] Preload complete, engines ready\n", .{});
         try stdout.flush();
+
+        if (http_enabled) {
+            _ = try std.Thread.spawn(.{}, httpThread, .{ &d, init.io });
+        }
         try d.serve("/tmp/presence-voice.sock", stdout);
         return;
     }

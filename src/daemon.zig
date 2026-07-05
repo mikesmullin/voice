@@ -83,7 +83,7 @@ pub const Daemon = struct {
 
     /// Synthesizes `text` with `preset`, optionally playing it. Returns the
     /// sample count (for logging).
-    fn synthesizeAndPlay(self: *Daemon, preset: config_mod.VoicePreset, text: []const u8, play: bool) !usize {
+    pub fn synthesizeAndPlay(self: *Daemon, preset: config_mod.VoicePreset, text: []const u8, play: bool) !usize {
         var frame_arena = std.heap.ArenaAllocator.init(self.allocator);
         defer frame_arena.deinit();
         const alloc = frame_arena.allocator();
