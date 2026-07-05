@@ -12,6 +12,7 @@ const std = @import("std");
 const daemon_mod = @import("daemon.zig");
 const wav = @import("audio/wav.zig");
 const cli = @import("cli.zig");
+const paths = @import("paths.zig");
 
 pub fn serve(daemon: *daemon_mod.Daemon, io: std.Io, port: u16, log: *std.Io.Writer) !void {
     const addr = try std.Io.net.IpAddress.parseIp4("127.0.0.1", port);
@@ -71,7 +72,7 @@ fn respondIndex(daemon: *daemon_mod.Daemon, request: *std.http.Server.Request, i
     defer frame_arena.deinit();
     const alloc = frame_arena.allocator();
 
-    const html = std.Io.Dir.cwd().readFileAlloc(io, "web/index.html", alloc, .limited(1 << 20)) catch {
+    const html = std.Io.Dir.cwd().readFileAlloc(io, paths.WEB_INDEX, alloc, .limited(1 << 20)) catch {
         try request.respond("presence-voice v2 - see /health, /voices, /speak\n(web/index.html not found)\n", .{});
         return;
     };

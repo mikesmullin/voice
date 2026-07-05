@@ -6,10 +6,11 @@
 
 const std = @import("std");
 const config_mod = @import("config.zig");
+const paths = @import("paths.zig");
 
 pub const Options = struct {
     output: ?[]const u8 = null,
-    config_path: []const u8 = "config.yaml",
+    config_path: []const u8 = paths.CONFIG,
     info: ?[]const u8 = null,
     cpu: bool = false,
     stinger: ?[]const u8 = null,

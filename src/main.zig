@@ -14,6 +14,7 @@ const audio_output = @import("audio/output.zig");
 const daemon_mod = @import("daemon.zig");
 const http_mod = @import("http.zig");
 const cli = @import("cli.zig");
+const paths = @import("paths.zig");
 
 fn httpThread(d: *daemon_mod.Daemon, io: std.Io) void {
     var buf: [4096]u8 = undefined;
@@ -33,7 +34,7 @@ pub fn main(init: std.process.Init) !void {
 
     if (args.len > 1 and std.mem.eql(u8, args[1], "--phonemize")) {
         const text = if (args.len > 2) args[2] else "Hello world, this is a test.";
-        const phonemizer = try kokoro.Phonemizer.init(arena, init.io, "vendor/zig-phonemes/data", false);
+        const phonemizer = try kokoro.Phonemizer.init(arena, init.io, paths.ZIG_PHONEMES_DATA, false);
         try stdout.print("[Kokoro] G2P (zig-phonemes) loaded\n", .{});
         const phonemes = try phonemizer.phonemize(arena, text);
         try stdout.print("text:  {s}\nphon:  {s}\n", .{ text, phonemes });
@@ -78,7 +79,7 @@ pub fn main(init: std.process.Init) !void {
     }
 
     if (args.len > 1 and std.mem.eql(u8, args[1], "--config-test")) {
-        const config_path = if (args.len > 2) args[2] else "config.yaml";
+        const config_path = if (args.len > 2) args[2] else paths.CONFIG;
         const cfg = try config_mod.Config.load(arena, init.io, config_path);
         try stdout.print("fallback_voice: {s}\n", .{cfg.fallback_voice orelse "(none)"});
         try stdout.print("default_preset: {s}\n", .{cfg.default_preset orelse "(none)"});
@@ -105,12 +106,12 @@ pub fn main(init: std.process.Init) !void {
         const text = args[5];
         const out_path = args[6];
 
-        const phonemizer = try kokoro.Phonemizer.init(arena, init.io, "vendor/zig-phonemes/data", false);
+        const phonemizer = try kokoro.Phonemizer.init(arena, init.io, paths.ZIG_PHONEMES_DATA, false);
         const phonemes = try phonemizer.phonemize(arena, text);
         try stdout.print("[Kokoro] phonemes: {s}\n", .{phonemes});
 
         const rt = try ort.Runtime.init();
-        var voice = try kokoro.Voice.load(&rt, arena, init.io, model_path, "vendor/zig-phonemes/data/kokoro_vocab.json", voices_bin_path);
+        var voice = try kokoro.Voice.load(&rt, arena, init.io, model_path, paths.KOKORO_VOCAB, voices_bin_path);
         try stdout.print("[Kokoro] model + voices pack loaded\n", .{});
 
         const samples = try voice.synthesize(arena, phonemes, voice_name, 1.0);
@@ -132,12 +133,12 @@ pub fn main(init: std.process.Init) !void {
         const voice_name = args[4];
         const text = if (args.len > 5) args[5] else "Hello world, this is a test.";
 
-        const phonemizer = try kokoro.Phonemizer.init(arena, init.io, "vendor/zig-phonemes/data", false);
+        const phonemizer = try kokoro.Phonemizer.init(arena, init.io, paths.ZIG_PHONEMES_DATA, false);
         const phonemes = try phonemizer.phonemize(arena, text);
 
         var out = audio_output.Output.init(arena);
         const rt = try ort.Runtime.init();
-        var voice = try kokoro.Voice.load(&rt, arena, init.io, model_path, "vendor/zig-phonemes/data/kokoro_vocab.json", voices_bin_path);
+        var voice = try kokoro.Voice.load(&rt, arena, init.io, model_path, paths.KOKORO_VOCAB, voices_bin_path);
 
         const samples = try voice.synthesize(arena, phonemes, voice_name, 1.0);
         try stdout.print("[Kokoro] synthesized {d} samples\n", .{samples.len});
@@ -151,7 +152,7 @@ pub fn main(init: std.process.Init) !void {
 
     if (args.len > 1 and std.mem.eql(u8, args[1], "serve")) {
         var http_enabled = false;
-        var config_path: []const u8 = "config.yaml";
+        var config_path: []const u8 = paths.CONFIG;
         for (args[2..]) |a| {
             if (std.mem.eql(u8, a, "--http")) {
                 http_enabled = true;
