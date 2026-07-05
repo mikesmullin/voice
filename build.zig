@@ -23,6 +23,25 @@ pub fn build(b: *std.Build) void {
     });
     exe_mod.addImport("zig_phenomes", g2p_module);
 
+    // ONNX Runtime (vendor/onnxruntime, v1.27.0 CPU release - see
+    // src/engines/onnxruntime.zig). Not vendored into git (vendor/ is
+    // gitignored); fetched once via a prebuilt release tarball.
+    // @cImport was removed from this Zig snapshot - translate-c now runs as
+    // its own build step producing a real module.
+    const onnx_translate = b.addTranslateC(.{
+        .root_source_file = b.path("vendor/onnxruntime/include/onnxruntime_c_api.h"),
+        .target = target,
+        .optimize = optimize,
+    });
+    onnx_translate.addIncludePath(b.path("vendor/onnxruntime/include"));
+    const onnx_c_module = onnx_translate.createModule();
+    exe_mod.addImport("onnxruntime_c", onnx_c_module);
+
+    exe_mod.addIncludePath(b.path("vendor/onnxruntime/include"));
+    exe_mod.addLibraryPath(b.path("vendor/onnxruntime/lib"));
+    exe_mod.linkSystemLibrary("onnxruntime", .{});
+    exe_mod.addRPath(b.path("vendor/onnxruntime/lib"));
+
     const exe = b.addExecutable(.{
         .name = "voice",
         .root_module = exe_mod,

@@ -6,6 +6,8 @@
 const std = @import("std");
 const kokoro = @import("engines/kokoro.zig");
 const piper = @import("engines/piper.zig");
+const ort = @import("engines/onnxruntime.zig");
+const wav = @import("audio/wav.zig");
 
 pub fn main(init: std.process.Init) !void {
     const arena = init.arena.allocator();
@@ -31,6 +33,32 @@ pub fn main(init: std.process.Init) !void {
         try stdout.print("[Piper] espeak-ng (dlopen) ready\n", .{});
         const ipa = try phonemizer.rawIpa(arena, text);
         try stdout.print("text:  {s}\nipa:   {s}\n", .{ text, ipa });
+        try stdout.flush();
+        return;
+    }
+
+    if (args.len > 4 and std.mem.eql(u8, args[1], "--piper-synth")) {
+        const model_path = args[2];
+        const text = args[3];
+        const out_path = args[4];
+
+        const phonemizer = try piper.Phonemizer.init(arena, "/usr/lib/libespeak-ng.so", "/usr/share/espeak-ng-data", false);
+        const ipa = try phonemizer.plainIpa(arena, text);
+        try stdout.print("[Piper] ipa: {s}\n", .{ipa});
+
+        const config_path = try std.mem.concat(arena, u8, &.{ model_path, ".json" });
+        const rt = try ort.Runtime.init();
+        var voice = try piper.Voice.load(&rt, arena, init.io, model_path, config_path);
+        try stdout.print("[Piper] model + config loaded ({d}Hz)\n", .{voice.config.sample_rate});
+
+        const samples = try voice.synthesize(arena, ipa, null);
+        try stdout.print("[Piper] synthesized {d} samples ({d:.2}s)\n", .{
+            samples.len,
+            @as(f64, @floatFromInt(samples.len)) / @as(f64, @floatFromInt(voice.config.sample_rate)),
+        });
+
+        try wav.writeMono16(init.io, out_path, voice.config.sample_rate, samples);
+        try stdout.print("[Piper] wrote {s}\n", .{out_path});
         try stdout.flush();
         return;
     }
