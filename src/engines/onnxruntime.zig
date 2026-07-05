@@ -1,7 +1,17 @@
 //! Thin Zig bindings over the ONNX Runtime C API (vendor/onnxruntime,
-//! v1.27.0 - CPU execution provider only for now). Enough surface to load
-//! a Piper/Kokoro voice model, run inference with named tensors, and read
+//! v1.27.0 gpu_cuda13 release - includes both CPU and CUDA execution
+//! providers in the same libonnxruntime.so). Enough surface to load a
+//! Piper/Kokoro voice model, run inference with named tensors, and read
 //! back the output float buffer.
+//!
+//! CUDA EP: per Fable's tmp/onnx-cuda-lab/REPORT.md investigation, ORT
+//! 1.27.0's official cu13 build works on this machine's CUDA 13.3 +
+//! Blackwell (sm_120) card, needing only system cuDNN 9 (`pacman -S
+//! cudnn`) beyond what /opt/cuda already provides - ~16x faster than CPU
+//! for Kokoro (80ms steady-state vs. ~1.3-1.5s). `Session.load` tries CUDA
+//! first and falls back to CPU on failure (e.g. no GPU/cuDNN present),
+//! logging which one was used - never a hard failure just because CUDA
+//! isn't available.
 
 const std = @import("std");
 pub const c = @import("onnxruntime_c");
@@ -57,6 +67,13 @@ pub const Session = struct {
     allocator: std.mem.Allocator,
 
     pub fn load(rt: *const Runtime, alloc: std.mem.Allocator, model_path: []const u8) !Session {
+        return load2(rt, alloc, model_path, true);
+    }
+
+    /// `try_cuda`: attempt the CUDA execution provider first, falling back
+    /// to CPU (with a log line either way) if it can't be appended (no
+    /// GPU, missing cuDNN, etc.) - see the module doc comment.
+    pub fn load2(rt: *const Runtime, alloc: std.mem.Allocator, model_path: []const u8, try_cuda: bool) !Session {
         const path_z = try alloc.dupeSentinel(u8, model_path, 0);
         defer alloc.free(path_z);
 
@@ -64,6 +81,35 @@ pub const Session = struct {
         try check(rt.api, rt.api.CreateSessionOptions.?(&opts), OrtError.CreateSessionOptionsFailed);
         defer rt.api.ReleaseSessionOptions.?(opts);
         _ = rt.api.SetIntraOpNumThreads.?(opts, 1);
+
+        var used_cuda = false;
+        if (try_cuda) {
+            var cuda_opts: ?*c.OrtCUDAProviderOptionsV2 = null;
+            const create_status = rt.api.CreateCUDAProviderOptions.?(&cuda_opts);
+            if (create_status == null) {
+                var keys = [_][*c]const u8{"device_id"};
+                var vals = [_][*c]const u8{"0"};
+                const update_status = rt.api.UpdateCUDAProviderOptions.?(cuda_opts, &keys, &vals, 1);
+                const append_status = if (update_status == null)
+                    rt.api.SessionOptionsAppendExecutionProvider_CUDA_V2.?(opts, cuda_opts)
+                else
+                    update_status;
+                rt.api.ReleaseCUDAProviderOptions.?(cuda_opts);
+                if (append_status == null) {
+                    used_cuda = true;
+                    std.debug.print("[onnxruntime] CUDA execution provider ready\n", .{});
+                } else {
+                    const msg = rt.api.GetErrorMessage.?(append_status);
+                    std.debug.print("[onnxruntime] CUDA EP unavailable ({s}), falling back to CPU\n", .{msg});
+                    rt.api.ReleaseStatus.?(append_status);
+                }
+            } else {
+                const msg = rt.api.GetErrorMessage.?(create_status);
+                std.debug.print("[onnxruntime] CUDA EP unavailable ({s}), falling back to CPU\n", .{msg});
+                rt.api.ReleaseStatus.?(create_status);
+            }
+        }
+        if (!used_cuda) std.debug.print("[onnxruntime] using CPU execution provider\n", .{});
 
         var session: ?*c.OrtSession = null;
         try check(rt.api, rt.api.CreateSession.?(rt.env, path_z.ptr, opts, &session), OrtError.CreateSessionFailed);

@@ -124,7 +124,10 @@ pub const Voice = struct {
 
     pub fn load(rt: *const ort.Runtime, alloc: std.mem.Allocator, io: std.Io, model_path: []const u8, config_path: []const u8) !Voice {
         return .{
-            .session = try ort.Session.load(rt, alloc, model_path),
+            // Piper's model is tiny and already realtime on CPU (per Fable's
+            // tmp/onnx-cuda-lab/REPORT.md, GPU is where Kokoro's ~16x win
+            // is - not worth it here), so skip the CUDA EP attempt.
+            .session = try ort.Session.load2(rt, alloc, model_path, false),
             .config = try VoiceConfig.load(alloc, io, config_path),
         };
     }

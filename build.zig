@@ -23,9 +23,12 @@ pub fn build(b: *std.Build) void {
     });
     exe_mod.addImport("zig_phenomes", g2p_module);
 
-    // ONNX Runtime (vendor/onnxruntime, v1.27.0 CPU release - see
-    // src/engines/onnxruntime.zig). Not vendored into git (vendor/ is
-    // gitignored); fetched once via a prebuilt release tarball.
+    // ONNX Runtime (vendor/onnxruntime, v1.27.0 gpu_cuda13 release - CPU
+    // and CUDA execution providers both in one libonnxruntime.so - see
+    // src/engines/onnxruntime.zig and Fable's tmp/onnx-cuda-lab/REPORT.md).
+    // Not vendored into git (vendor/ is gitignored); fetched once via a
+    // prebuilt release tarball. Also needs system cuDNN 9 (`pacman -S
+    // cudnn`) for the CUDA EP; CPU EP works regardless.
     // @cImport was removed from this Zig snapshot - translate-c now runs as
     // its own build step producing a real module.
     const onnx_translate = b.addTranslateC(.{
