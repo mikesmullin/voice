@@ -1,8 +1,9 @@
-# 🗣️ presence-voice v2
+# 🗣️ voice v2
 
-Always-on local text-to-speech daemon (Piper + Kokoro), written in Zig +
-ONNX Runtime. CLI, unix socket, HTTP API, and a browser SPA all talk to
-the same running process.
+Always-on local text-to-speech CLI + daemon (Piper + Kokoro), written in
+Zig + ONNX Runtime. CLI, unix socket, HTTP API, and a browser SPA all
+talk to the same running process (the `presence-voice` systemd service,
+see `voice.service`).
 
 | Version | Branch | Notes |
 |---|---|---|

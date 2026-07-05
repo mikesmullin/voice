@@ -1,9 +1,11 @@
-# presence-voice v2 - Operator Guide
+# voice v2 - Operator Guide
 
 Fast operator manual for using the `voice` CLI (v2, Zig + ONNX Runtime).
-Successor to v1's `SKILLS.md` (kept on the `v1` branch). See `README.md`
-for the v1/v2 comparison and `tmp/PHASE3_PLAN.md` for the full design
-rationale.
+The always-on daemon runs as the `presence-voice` systemd service (see
+`voice.service`); `voice` is the CLI binary and the name of the package
+as a whole. Successor to v1's `SKILLS.md` (kept on the `v1` branch). See
+`README.md` for the v1/v2 comparison and `tmp/PHASE3_PLAN.md` for the
+full design rationale.
 
 ## Status
 
@@ -32,12 +34,16 @@ git submodule update --init   # vendor/zig-phonemes (build-time G2P dependency)
 ./scripts/fetch-models.sh     # ./models/kokoro/ + ./models/piper/
 ```
 
-The script downloads Kokoro's latest fp16 ONNX export + voices pack
-(from `thewh1teagle/kokoro-onnx`'s releases), plus one Piper voice per
-preset in `config.yaml`'s `preload:` list. To use additional Piper
-presets, either add them to `preload:` first and re-run the script, or
-fetch them by hand into `models/piper/` using the same
-`rhasspy/piper-voices` URL pattern (see the script for the exact shape).
+By default this fetches Kokoro's latest fp16 ONNX export + voices pack
+(from `thewh1teagle/kokoro-onnx`'s releases - one shared file covers
+every Kokoro preset), plus **every** Piper preset in `config.yaml`'s
+`voices:` map (~28 voices, ~1GB total) - so everything configured is
+ready to go, not just the preloaded ones. On a slow connection, pass
+`--preload-only` to fetch only the Piper presets in `preload:` instead:
+
+```bash
+./scripts/fetch-models.sh --preload-only
+```
 
 ## Core Commands
 
@@ -122,9 +128,9 @@ Alpine.js + Tailwind demo page - open `http://127.0.0.1:3124/` once
   `./scripts/fetch-models.sh` - see "Fetching models" above) rather than
   a dev-machine-specific path, but there's still no approved v2 schema
   for per-preset model paths yet (see `tmp/PHASE3_PLAN.md`'s "Still
-  open" section). Piper presets outside `config.yaml`'s `preload:` list
-  need their `.onnx`/`.onnx.json` fetched into `models/piper/` by hand
-  for now (same URL pattern the fetch script uses).
+  open" section). Only presets added to `config.yaml` *after* running
+  `fetch-models.sh` (or ones deliberately skipped via `--preload-only`)
+  need their `.onnx`/`.onnx.json` fetched into `models/piper/` by hand.
 - **`-o`/`-g` only work with `local`**, not `client`/bare requests - the
   unix socket protocol is a simple `preset\ttext\n` line, with no room for
   extra options yet. HTTP's `POST /speak` DOES support `gain` and
