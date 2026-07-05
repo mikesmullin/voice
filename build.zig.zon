@@ -1,0 +1,12 @@
+.{
+    .name = .presence_voice,
+    .version = "0.1.0",
+    .minimum_zig_version = "0.17.0-dev.1252+e4b325c19",
+    .fingerprint = 0xcec968bbe64904c7,
+    .dependencies = .{},
+    .paths = .{
+        "build.zig",
+        "build.zig.zon",
+        "src",
+    },
+}
