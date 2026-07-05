@@ -3,7 +3,6 @@
 import os
 import warnings
 import logging
-import random
 from typing import Optional
 import numpy as np
 
@@ -44,7 +43,7 @@ class KokoroEngine:
         if self.pipeline is None:
             from .timing import log
             import torch
-            
+
             if self.force_cpu:
                 device = "cpu"
                 log(f"[Kokoro TTS] Initializing pipeline on device: cpu (forced)")
@@ -59,16 +58,6 @@ class KokoroEngine:
                 self.pipeline.model = self.pipeline.model.cpu()
             
             log(f"[Kokoro TTS] Pipeline initialized")
-    
-    def _add_filler_prefix(self, text: str) -> str:
-        """Add a random filler word prefix to ease into speech naturally."""
-        fillers = [
-            #"Um,", "Well,", "Uh,", "So,", "Like,", 
-            #"You know,", "Hmm,", "Okay,", "Alright,", "Er,"
-            "... ... "
-        ]
-        filler = random.choice(fillers)
-        return f"{filler} {text}"
     
     def synthesize(
         self,
@@ -99,14 +88,11 @@ class KokoroEngine:
             self.last_voice_id = voice_id
             log(f"[Kokoro TTS] Voice load preparation took {get_elapsed() - load_start:.2f}s")
         
-        # Add filler prefix to prevent clipping
-        prefixed_text = self._add_filler_prefix(text)
-        
         log(f"[Kokoro TTS] Generating speech with voice '{voice_id}' (speed={speed})...")
         gen_start = get_elapsed()
         
         # Generate speech using Kokoro
-        audio_generator = self.pipeline(prefixed_text, voice=voice_id, speed=speed)
+        audio_generator = self.pipeline(text, voice=voice_id, speed=speed)
         
         # Collect audio chunks
         audio_chunks = []

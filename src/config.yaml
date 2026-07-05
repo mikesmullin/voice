@@ -4,6 +4,13 @@
 # Default fallback voice when server is unavailable
 fallback_voice: lessac
 
+# Voice presets to warm up (load model + voice, no playback) when `voice serve`
+# starts, so the *first* real `voice hot` request for these presets is as fast
+# as subsequent ones instead of paying a full model/voice load on request 1.
+preload:
+  - bella   # main Kokoro voice
+  - lessac  # main Piper voice / fallback
+
 voices:
   # ==========================================================================
   # KOKORO VOICES (GPU-accelerated, highest quality)

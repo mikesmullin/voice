@@ -29,12 +29,18 @@ class VoiceServer:
         start_timer()
         log("[Server] Initializing voice engine...")
         
-        # Pre-initialize the Kokoro pipeline to load model onto GPU
-        # (Server is optimized for low-latency Kokoro voices)
-        from .kokoro_engine import KokoroEngine
-        kokoro = KokoroEngine(force_cpu=self.engine.force_cpu)
-        kokoro._initialize_pipeline()
-        log("[Server] Kokoro model loaded and ready")
+        # Warm up the configured preload voices (see config.yaml `preload:`)
+        # on the SAME engine instance that will handle real requests. Prior
+        # to this fix, a separate throwaway KokoroEngine was warmed here
+        # instead, so the first real request still paid the full pipeline
+        # init cost - this actually preloads what `self.engine` will use.
+        preload = self.engine.get_preload_voices()
+        if preload:
+            log(f"[Server] Preloading voices: {', '.join(preload)}...")
+            self.engine.preload_voices(preload)
+            log("[Server] Preload complete, engines ready")
+        else:
+            log("[Server] No preload voices configured")
         
         # Create TCP socket
         self.socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)

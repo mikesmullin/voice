@@ -65,6 +65,37 @@ class VoiceEngine:
     def get_fallback_voice(self) -> str:
         """Get the configured fallback voice name."""
         return self.config.get("fallback_voice", "lessac")
+
+    def get_preload_voices(self) -> list[str]:
+        """Get the configured list of voice presets to warm up on startup."""
+        return list(self.config.get("preload", []))
+
+    def preload_voices(self, voice_names: Optional[list[str]] = None) -> None:
+        """
+        Warm up one or more voice presets: load the engine and the specific
+        voice, and run a throwaway synthesis (no playback) so the model and
+        voice are fully resident before the first real request arrives.
+
+        Args:
+            voice_names: Preset names to warm up. Defaults to the config's
+                `preload` list if not given.
+        """
+        voices = self.config.get("voices", {})
+        for name in voice_names if voice_names is not None else self.get_preload_voices():
+            if name not in voices:
+                log(f"[Voice] Preload skipped: preset '{name}' not found in config")
+                continue
+
+            voice_config = voices[name]
+            engine_type = voice_config.get("engine", "kokoro")
+            voice_id = voice_config.get("voice")
+            speed = voice_config.get("speed", 1.0)
+            if not voice_id:
+                continue
+
+            engine = self._get_kokoro_engine() if engine_type == "kokoro" else self._get_piper_engine()
+            log(f"[Voice] Preloading '{name}' ({engine_type})...")
+            engine.synthesize("Ready.", voice_id, speed)
     
     def _resolve_path(self, relative_path: str) -> Path:
         """
