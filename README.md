@@ -1,5 +1,10 @@
 # 🗣️ Voice
 
+| Version | Branch | Notes |
+|---|---|---|
+| [v2](https://github.com/mikesmullin/voice/tree/v2) | `v2` | Zig daemon, ONNX Runtime (CPU/CUDA), HTTP + CLI + SPA, always-on - in progress, not yet the default branch |
+| **v1** (this branch) | `v1` | Original Python CLI/server (Piper + Kokoro) - still fully working |
+
 Fast local text-to-speech (TTS) from the command line, with both Piper and Kokoro voice presets.
 
 **UPDATE:** Piper is now the recommended default for this project. In regular CLI use it is noticeably faster than Kokoro, to the point that it is usually the better choice unless you specifically want a Kokoro voice.
