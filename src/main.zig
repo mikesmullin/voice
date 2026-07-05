@@ -9,6 +9,7 @@ const piper = @import("engines/piper.zig");
 const ort = @import("engines/onnxruntime.zig");
 const wav = @import("audio/wav.zig");
 const config_mod = @import("config.zig");
+const audio_output = @import("audio/output.zig");
 
 pub fn main(init: std.process.Init) !void {
     const arena = init.arena.allocator();
@@ -109,6 +110,29 @@ pub fn main(init: std.process.Init) !void {
 
         try wav.writeMono16(init.io, out_path, sample_rate, samples);
         try stdout.print("[Kokoro] wrote {s}\n", .{out_path});
+        try stdout.flush();
+        return;
+    }
+
+    if (args.len > 4 and std.mem.eql(u8, args[1], "--kokoro-play")) {
+        const model_path = args[2];
+        const voices_bin_path = args[3];
+        const voice_name = args[4];
+        const text = if (args.len > 5) args[5] else "Hello world, this is a test.";
+
+        const phonemizer = try kokoro.Phonemizer.init(arena, init.io, "tmp/zig-phenomes/data", false);
+        const phonemes = try phonemizer.phonemize(arena, text);
+
+        var out = audio_output.Output.init(arena);
+        const rt = try ort.Runtime.init();
+        var voice = try kokoro.Voice.load(&rt, arena, init.io, model_path, "tmp/zig-phenomes/data/kokoro_vocab.json", voices_bin_path);
+
+        const samples = try voice.synthesize(arena, phonemes, voice_name, 1.0);
+        try stdout.print("[Kokoro] synthesized {d} samples\n", .{samples.len});
+
+        try out.play(samples, 24000);
+        out.drain(24000);
+        try stdout.print("[Audio] played through persistent PulseAudio stream\n", .{});
         try stdout.flush();
         return;
     }

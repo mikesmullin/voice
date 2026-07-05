@@ -45,6 +45,20 @@ pub fn build(b: *std.Build) void {
     exe_mod.linkSystemLibrary("onnxruntime", .{});
     exe_mod.addRPath(b.path("vendor/onnxruntime/lib"));
 
+    // Persistent audio output stream (section 4/8 of the plan): PulseAudio's
+    // "simple" API (system libpulse-simple, PipeWire provides a compatible
+    // socket) - one blocking playback connection kept open by the daemon,
+    // instead of v1's per-request stream open. See src/audio/output.zig.
+    const pulse_translate = b.addTranslateC(.{
+        .root_source_file = b.graph.cwdRelativePath("/usr/include/pulse/simple.h"),
+        .target = target,
+        .optimize = optimize,
+    });
+    const pulse_c_module = pulse_translate.createModule();
+    exe_mod.addImport("pulse_c", pulse_c_module);
+    exe_mod.linkSystemLibrary("pulse-simple", .{});
+    exe_mod.linkSystemLibrary("pulse", .{});
+
     const exe = b.addExecutable(.{
         .name = "voice",
         .root_module = exe_mod,
