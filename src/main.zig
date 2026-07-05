@@ -63,6 +63,34 @@ pub fn main(init: std.process.Init) !void {
         return;
     }
 
+    if (args.len > 6 and std.mem.eql(u8, args[1], "--kokoro-synth")) {
+        const model_path = args[2];
+        const voices_bin_path = args[3];
+        const voice_name = args[4];
+        const text = args[5];
+        const out_path = args[6];
+
+        const phonemizer = try kokoro.Phonemizer.init(arena, init.io, "tmp/zig-phenomes/data", false);
+        const phonemes = try phonemizer.phonemize(arena, text);
+        try stdout.print("[Kokoro] phonemes: {s}\n", .{phonemes});
+
+        const rt = try ort.Runtime.init();
+        var voice = try kokoro.Voice.load(&rt, arena, init.io, model_path, "tmp/zig-phenomes/data/kokoro_vocab.json", voices_bin_path);
+        try stdout.print("[Kokoro] model + voices pack loaded\n", .{});
+
+        const samples = try voice.synthesize(arena, phonemes, voice_name, 1.0);
+        const sample_rate: u32 = 24000;
+        try stdout.print("[Kokoro] synthesized {d} samples ({d:.2}s)\n", .{
+            samples.len,
+            @as(f64, @floatFromInt(samples.len)) / @as(f64, @floatFromInt(sample_rate)),
+        });
+
+        try wav.writeMono16(init.io, out_path, sample_rate, samples);
+        try stdout.print("[Kokoro] wrote {s}\n", .{out_path});
+        try stdout.flush();
+        return;
+    }
+
     try stdout.print("presence-voice v2 (scaffold) - not yet implemented\n", .{});
     if (args.len > 1) {
         try stdout.print("args:", .{});
