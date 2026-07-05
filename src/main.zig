@@ -5,6 +5,7 @@
 
 const std = @import("std");
 const kokoro = @import("engines/kokoro.zig");
+const piper = @import("engines/piper.zig");
 
 pub fn main(init: std.process.Init) !void {
     const arena = init.arena.allocator();
@@ -20,6 +21,16 @@ pub fn main(init: std.process.Init) !void {
         try stdout.print("[Kokoro] G2P (zig-phenomes) loaded\n", .{});
         const phonemes = try phonemizer.phonemize(arena, text);
         try stdout.print("text:  {s}\nphon:  {s}\n", .{ text, phonemes });
+        try stdout.flush();
+        return;
+    }
+
+    if (args.len > 1 and std.mem.eql(u8, args[1], "--espeak-ipa")) {
+        const text = if (args.len > 2) args[2] else "Hello world, this is a test.";
+        const phonemizer = try piper.Phonemizer.init(arena, "/usr/lib/libespeak-ng.so", "/usr/share/espeak-ng-data", false);
+        try stdout.print("[Piper] espeak-ng (dlopen) ready\n", .{});
+        const ipa = try phonemizer.rawIpa(arena, text);
+        try stdout.print("text:  {s}\nipa:   {s}\n", .{ text, ipa });
         try stdout.flush();
         return;
     }
