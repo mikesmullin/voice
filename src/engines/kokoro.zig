@@ -71,9 +71,14 @@ pub const Voice = struct {
     voices_bin: []const u8,
 
     pub fn load(rt: *const ort.Runtime, alloc: std.mem.Allocator, io: std.Io, model_path: []const u8, vocab_path: []const u8, voices_bin_path: []const u8) !Voice {
+        return loadWithProvider(rt, alloc, io, model_path, vocab_path, voices_bin_path, true);
+    }
+
+    /// `try_cuda = false` forces CPU (the CLI's `-C/--cpu` flag, "local" only).
+    pub fn loadWithProvider(rt: *const ort.Runtime, alloc: std.mem.Allocator, io: std.Io, model_path: []const u8, vocab_path: []const u8, voices_bin_path: []const u8, try_cuda: bool) !Voice {
         const voices_bin = try std.Io.Dir.cwd().readFileAlloc(io, voices_bin_path, alloc, .limited(64 << 20));
         return .{
-            .session = try ort.Session.load(rt, alloc, model_path),
+            .session = try ort.Session.load2(rt, alloc, model_path, try_cuda),
             .vocab = try Vocab.load(alloc, io, vocab_path),
             .voices_bin = voices_bin,
         };

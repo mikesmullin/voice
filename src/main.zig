@@ -1,7 +1,8 @@
-//! presence-voice v2 - CLI entry point (scaffold, per tmp/PHASE3_PLAN.md section 6).
-//! Not yet implemented: local/client/list/serve subcommands, config.yaml parsing,
-//! ONNX Runtime inference. This is milestone 1's starting skeleton, now with a
-//! `--phonemize` debug path wired to zig-phenomes' G2P (milestone 2, partial).
+//! presence-voice v2 - CLI entry point, per tmp/PHASE3_PLAN.md section 6.
+//! `local`/`client`/`list`/`serve`/bare-shorthand + -o/-c/-i/-C/-g/-h are
+//! implemented (milestone 5); `-s/--stinger` is parsed but not yet wired
+//! up to anything. The various `--xyz-*` debug commands below predate the
+//! real CLI and are kept for ad-hoc engine-level testing.
 
 const std = @import("std");
 const kokoro = @import("engines/kokoro.zig");
@@ -12,6 +13,7 @@ const config_mod = @import("config.zig");
 const audio_output = @import("audio/output.zig");
 const daemon_mod = @import("daemon.zig");
 const http_mod = @import("http.zig");
+const cli = @import("cli.zig");
 
 fn httpThread(d: *daemon_mod.Daemon, io: std.Io) void {
     var buf: [4096]u8 = undefined;
@@ -171,11 +173,102 @@ pub fn main(init: std.process.Init) !void {
         return;
     }
 
-    try stdout.print("presence-voice v2 (scaffold) - not yet implemented\n", .{});
-    if (args.len > 1) {
-        try stdout.print("args:", .{});
-        for (args[1..]) |arg| try stdout.print(" {s}", .{arg});
-        try stdout.print("\n", .{});
+    // "list" is its own subcommand (not a flag) - section 6 decision.
+    if (args.len > 1 and std.mem.eql(u8, args[1], "list")) {
+        const opts = try cli.parseOptions(arena, args[2..]);
+        const cfg = try config_mod.Config.load(arena, init.io, opts.config_path);
+        var it = cfg.voices.iterator();
+        while (it.next()) |kv| {
+            try stdout.print("{s: <12} {s: <8} {s}\n", .{ kv.key_ptr.*, kv.value_ptr.engine, kv.value_ptr.voice });
+        }
+        try stdout.flush();
+        return;
     }
-    try stdout.flush();
+
+    // "local" / "client" / bare shorthand (for "client") - section 6.
+    const is_local = args.len > 1 and std.mem.eql(u8, args[1], "local");
+    const is_explicit_client = args.len > 1 and std.mem.eql(u8, args[1], "client");
+    const rest = if (is_local or is_explicit_client) args[2..] else args[1..];
+
+    const opts = try cli.parseOptions(arena, rest);
+
+    if (opts.help) {
+        try stdout.print(cli.HELP_TEXT, .{});
+        try stdout.flush();
+        return;
+    }
+
+    const cfg = try config_mod.Config.load(arena, init.io, opts.config_path);
+
+    if (opts.info) |preset_name| {
+        const preset = cfg.getPreset(preset_name) orelse {
+            try stdout.print("error: no such preset '{s}'\n", .{preset_name});
+            try stdout.flush();
+            std.process.exit(1);
+        };
+        try stdout.print("Preset:  {s}\nEngine:  {s}\nVoice:   {s}\nSpeed:   {d}\n", .{ preset_name, preset.engine, preset.voice, preset.speed });
+        try stdout.flush();
+        return;
+    }
+
+    const resolved = try cli.resolvePresetAndText(arena, &cfg, opts.positionals.items) orelse {
+        try stdout.print(cli.HELP_TEXT, .{});
+        try stdout.flush();
+        std.process.exit(2);
+    };
+    const preset = cfg.getPreset(resolved.preset_name) orelse {
+        try stdout.print("error: no such preset '{s}'\n", .{resolved.preset_name});
+        try stdout.flush();
+        std.process.exit(1);
+    };
+
+    if (is_local) {
+        var d = try daemon_mod.Daemon.init(arena, init.io, cfg);
+        d.force_cpu = opts.cpu;
+        const result = try d.synthesize(arena, preset, resolved.text);
+        cli.applyGain(result.samples, opts.gain);
+
+        if (opts.output) |out_path| {
+            try wav.writeMono16(init.io, out_path, result.sample_rate, result.samples);
+            try stdout.print("[Voice] Saved to: {s}\n", .{out_path});
+        } else {
+            var out = audio_output.Output.init(arena);
+            try out.play(result.samples, result.sample_rate);
+            out.drain(result.sample_rate);
+        }
+        try stdout.flush();
+        return;
+    }
+
+    // "client" (explicit or bare shorthand): fails fast if the daemon isn't
+    // reachable, per the "no more implicit fallback" decision - never
+    // silently falls back to "local".
+    if (opts.output != null or opts.gain != 1.0) {
+        try stdout.print("error: -o/--output and -g/--gain are not yet supported for client/bare requests (local only so far)\n", .{});
+        try stdout.flush();
+        std.process.exit(1);
+    }
+
+    const socket_path = "/tmp/presence-voice.sock";
+    const addr = std.Io.net.UnixAddress.init(socket_path) catch unreachable;
+    var conn = addr.connect(init.io) catch {
+        try stdout.print("error: presence-voice daemon is not reachable\n       (unix://{s})\n       Start it with: voice serve\n", .{socket_path});
+        try stdout.flush();
+        std.process.exit(1);
+    };
+    defer conn.close(init.io);
+
+    var write_buf: [4096]u8 = undefined;
+    var writer = conn.writer(init.io, &write_buf);
+    try writer.interface.print("{s}\t{s}\n", .{ resolved.preset_name, resolved.text });
+    try writer.interface.flush();
+
+    var read_buf: [4096]u8 = undefined;
+    var reader = conn.reader(init.io, &read_buf);
+    const line = try reader.interface.takeDelimiterExclusive('\n');
+    if (std.mem.startsWith(u8, line, "ERR")) {
+        try stdout.print("error: {s}\n", .{line});
+        try stdout.flush();
+        std.process.exit(1);
+    }
 }

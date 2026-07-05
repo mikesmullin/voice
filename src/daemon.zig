@@ -34,6 +34,7 @@ pub const Daemon = struct {
     kokoro_voice: ?kokoro.Voice = null,
     piper_phonemizer: piper.Phonemizer,
     piper_voices: std.StringHashMap(piper.Voice),
+    force_cpu: bool = false,
 
     pub fn init(alloc: std.mem.Allocator, io: std.Io, config: config_mod.Config) !Daemon {
         return .{
@@ -50,7 +51,7 @@ pub const Daemon = struct {
 
     fn getKokoroVoice(self: *Daemon) !*kokoro.Voice {
         if (self.kokoro_voice == null) {
-            self.kokoro_voice = try kokoro.Voice.load(&self.rt, self.allocator, self.io, KOKORO_MODEL_PATH, KOKORO_VOCAB_PATH, KOKORO_VOICES_BIN_PATH);
+            self.kokoro_voice = try kokoro.Voice.loadWithProvider(&self.rt, self.allocator, self.io, KOKORO_MODEL_PATH, KOKORO_VOCAB_PATH, KOKORO_VOICES_BIN_PATH, !self.force_cpu);
         }
         return &self.kokoro_voice.?;
     }
@@ -81,6 +82,25 @@ pub const Daemon = struct {
         }
     }
 
+    pub const SynthResult = struct { samples: []f32, sample_rate: u32 };
+
+    /// Synthesizes `text` with `preset`, returning samples + rate allocated
+    /// from `alloc` (caller-owned, e.g. for writing to a WAV file - unlike
+    /// `synthesizeAndPlay`'s internal frame arena).
+    pub fn synthesize(self: *Daemon, alloc: std.mem.Allocator, preset: config_mod.VoicePreset, text: []const u8) !SynthResult {
+        if (std.mem.eql(u8, preset.engine, "kokoro")) {
+            const voice = try self.getKokoroVoice();
+            const phonemes = try self.kokoro_phonemizer.phonemize(alloc, text);
+            const samples = try voice.synthesize(alloc, phonemes, preset.voice, preset.speed);
+            return .{ .samples = samples, .sample_rate = 24000 };
+        } else {
+            const voice = try self.getPiperVoice(preset.voice);
+            const ipa = try self.piper_phonemizer.plainIpa(alloc, text);
+            const samples = try voice.synthesize(alloc, ipa, 1.0 / preset.speed);
+            return .{ .samples = samples, .sample_rate = voice.config.sample_rate };
+        }
+    }
+
     /// Synthesizes `text` with `preset`, optionally playing it. Returns the
     /// sample count (for logging).
     pub fn synthesizeAndPlay(self: *Daemon, preset: config_mod.VoicePreset, text: []const u8, play: bool) !usize {
@@ -88,19 +108,9 @@ pub const Daemon = struct {
         defer frame_arena.deinit();
         const alloc = frame_arena.allocator();
 
-        if (std.mem.eql(u8, preset.engine, "kokoro")) {
-            const voice = try self.getKokoroVoice();
-            const phonemes = try self.kokoro_phonemizer.phonemize(alloc, text);
-            const samples = try voice.synthesize(alloc, phonemes, preset.voice, preset.speed);
-            if (play) try self.output.play(samples, 24000);
-            return samples.len;
-        } else {
-            const voice = try self.getPiperVoice(preset.voice);
-            const ipa = try self.piper_phonemizer.plainIpa(alloc, text);
-            const samples = try voice.synthesize(alloc, ipa, 1.0 / preset.speed);
-            if (play) try self.output.play(samples, voice.config.sample_rate);
-            return samples.len;
-        }
+        const result = try self.synthesize(alloc, preset, text);
+        if (play) try self.output.play(result.samples, result.sample_rate);
+        return result.samples.len;
     }
 
     /// Single-threaded blocking accept loop on a unix socket. Protocol: one
