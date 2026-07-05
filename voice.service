@@ -1,0 +1,42 @@
+# presence-voice v2 systemd user service
+#
+# Installation:
+#   1. Build the binary: zig build -Doptimize=ReleaseSafe
+#      (or `zvm run <pinned version> build` - see build.zig.zon's
+#      minimum_zig_version and README.md)
+#   2. Install it somewhere on PATH, e.g.:
+#      mkdir -p ~/.local/bin && cp zig-out/bin/voice ~/.local/bin/voice
+#   3. Copy this file to ~/.config/systemd/user/voice.service
+#      (edit ExecStart/WorkingDirectory if your paths differ - the daemon
+#      currently expects to be run from the repo root, since config.yaml,
+#      web/index.html, and tmp/zig-phenomes/data are read via relative
+#      paths - see the "Known gaps" note in src/daemon.zig)
+#   4. Enable and start:
+#      systemctl --user daemon-reload
+#      systemctl --user enable voice
+#      systemctl --user start voice
+#
+# View logs:
+#   journalctl --user -u voice -f
+#
+# Manual equivalent (identical behavior/timing, per tmp/PHASE3_PLAN.md
+# section 8 - systemd only changes where stdout goes and adds restart
+# supervision):
+#   cd /workspace/voice && voice serve --http
+
+[Unit]
+Description=presence-voice v2 - Text to Speech Service (Piper + Kokoro, Zig)
+After=sound.target
+
+[Service]
+Type=simple
+WorkingDirectory=%h/workspace/voice
+ExecStart=%h/.local/bin/voice serve --http
+Restart=on-failure
+RestartSec=5
+
+# Ensure audio access (PipeWire's pulse-compatible socket)
+Environment=PULSE_SERVER=unix:/run/user/%U/pulse/native
+
+[Install]
+WantedBy=default.target

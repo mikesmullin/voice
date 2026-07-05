@@ -1,152 +1,74 @@
-# 🗣️ Voice
+# 🗣️ presence-voice v2
 
-Fast local text-to-speech (TTS) from the command line, with both Piper and Kokoro voice presets.
+Always-on local text-to-speech daemon (Piper + Kokoro), written in Zig +
+ONNX Runtime. CLI, unix socket, HTTP API, and a browser SPA all talk to
+the same running process.
 
-**UPDATE:** Piper is now the recommended default for this project. In regular CLI use it is noticeably faster than Kokoro, to the point that it is usually the better choice unless you specifically want a Kokoro voice.
+| Version | Branch | Notes |
+|---|---|---|
+| **v2** (this branch, in progress) | `v2` | Zig daemon, ONNX Runtime (CPU/CUDA), HTTP + CLI + SPA, always-on |
+| [v1](https://github.com/mikesmullin/voice/tree/v1) | `v1` | Original Python CLI/server (Piper + Kokoro), still fully working |
 
-Kokoro is still available and still useful, but it benefits much more from `voice serve` and `voice hot` because direct invocation has more noticeable startup delay. Kokoro voices also download automatically on first use.
+v2 is a rewrite (see `tmp/PHASE3_PLAN.md` for the full design/decisions
+log), not yet the default branch. See `SKILL.md` for the operator guide
+and known gaps.
 
-## Why Piper First
+## Why a rewrite
 
-- Piper is the practical default: fast, local, offline, and does not require a GPU or VRAM reservation.
-- Kokoro still offers strong voice quality, but repeated or latency-sensitive Kokoro usage is better through `serve` and `hot`.
-- The configured fallback voice is `lessac`, which is also one of the preferred Piper presets.
+v1 (Python) worked, but every CLI invocation paid Python interpreter
+startup + PyTorch import cost, and there was no single persistent process
+keeping models warm *and* an audio device open at once. v2 is a single
+Zig daemon: ONNX Runtime sessions loaded once, one PulseAudio connection
+kept open and reused, unix socket for the CLI, optional HTTP API for
+everything else (curl, the browser SPA).
 
-## Features
-
-- Two local TTS engines: Piper and Kokoro
-- Fast CPU-first workflow with Piper
-- Optional GPU acceleration with Kokoro on NVIDIA CUDA systems
-- Automatic first-use Kokoro voice downloads
-- Play audio immediately or save to WAV
-- Optional stinger sounds before playback
-- Simple voice presets in `src/config.yaml`
-
-## Installation
-
-### Prerequisites
-
-- Python 3.10-3.12
-- [uv](https://docs.astral.sh/uv/) package manager
-- PortAudio for local playback on Linux
-- Optional: NVIDIA GPU with CUDA 12.x if you want Kokoro GPU acceleration
-
-### Quick Install (Piper only — recommended for macOS)
-
-Install without Kokoro — gets you Piper TTS with no PyTorch dependency:
+## Quickstart
 
 ```bash
-uv tool install --editable . --with pip
+# system dependencies (Arch shown; adjust for your distro)
+sudo pacman -S espeak-ng cudnn   # cudnn optional, only needed for Kokoro's CUDA EP
+
+# Zig toolchain - see build.zig.zon's minimum_zig_version (currently a
+# Zig master snapshot; a stable release didn't work on this dev machine's
+# bleeding-edge glibc - see SKILL.md's "Toolchain notes")
+curl https://www.zvm.app/install.sh | bash
+zvm install master && zvm use master
+
+# ONNX Runtime (vendored, not committed - vendor/ is gitignored)
+mkdir -p vendor && cd vendor
+curl -fLO https://github.com/microsoft/onnxruntime/releases/download/v1.27.0/onnxruntime-linux-x64-gpu_cuda13-1.27.0.tgz
+tar xzf onnxruntime-linux-x64-gpu_cuda13-1.27.0.tgz
+mv onnxruntime-linux-x64-gpu_cuda13-1.27.0 onnxruntime
+cd ..
+
+zig build
+./zig-out/bin/voice list
+./zig-out/bin/voice local lessac "Hello from Piper."
 ```
 
-### Install with Kokoro
-
-To also enable Kokoro voices, install with the `kokoro` extra:
+To run the daemon (recommended - see `voice.service` for systemd
+--user):
 
 ```bash
-uv tool install --editable ".[kokoro]" --with pip
+./zig-out/bin/voice serve --http
+# in another shell:
+./zig-out/bin/voice bella "Hello from Kokoro, via the daemon."
+curl http://127.0.0.1:3124/health
 ```
 
-On **macOS** (Apple Silicon or Intel), this pulls `torch` from PyPI (CPU/MPS). No CUDA index, no NVIDIA driver required.
+## Status
 
-On **Linux / Windows**, `torch` is automatically pulled from the PyTorch CUDA 12.9 index for GPU acceleration.
+Working end-to-end: both engines synthesize real audio via ONNX Runtime
+(Kokoro on GPU when available, falling back to CPU; Piper always CPU),
+`local`/`client`/`list`/`serve --http` all function, the HTTP API and
+browser SPA work, systemd unit drafted. See `SKILL.md`'s "Known gaps" for
+what's intentionally unfinished (per-request gain/output over the daemon
+protocol, stingers, hardcoded model paths).
 
-The `--with pip` flag is required for the transformer stack.
+## Documentation
 
-### GPU Support
+- `SKILL.md` - operator guide (commands, HTTP API, known gaps, toolchain notes)
+- `tmp/PHASE3_PLAN.md` - full design rationale and decisions log
+- `voice.service` - systemd --user unit
 
-If you installed with Kokoro on an NVIDIA GPU, verify CUDA after install:
-
-```bash
-python -c "import torch; print('CUDA available:', torch.cuda.is_available())"
-```
-
-## Operator Guide
-
-Operational details live in `SKILLS.md`.
-
-Use that file for:
-
-- command examples
-- preferred Piper and Kokoro presets
-- stdin, file output, and config-path usage
-- `serve` and `hot` workflow guidance
-- practical operator rules for choosing Piper versus Kokoro
-
-## Performance Notes
-
-- Piper is the fastest general-purpose choice in this repo.
-- Kokoro direct calls are slower to warm up.
-- Kokoro voices download automatically on first use.
-- If you need repeated low-latency Kokoro generation, use `voice serve` and then `voice hot`.
-- If you mostly want reliable local TTS from the shell, use Piper presets first.
-
-## HTTP Streaming Service
-
-Want to self-host a free/open-source [ElevenLabs](https://elevenlabs.io/) clone?
-
-You can expose speech synthesis over HTTP for browser playback:
-
-```bash
-voice http
-```
-
-### Testing HTTP Streaming
-
-#### via **cURL**:
-
-```bash
-curl "http://127.0.0.1:3040/speak?q=hello%20world&engine=piper&voice=lessac" --output speech.wav
-```
-
-The response is `audio/wav`, suitable for modern HTML5 `<audio>` playback.
-
-#### via **Browser**:
-
-Open directly in a browser after starting `voice http`.
-
-```bash
-chrome test/streaming_audio.html
-```
-
-Submit text, and confirm audio plays via the `<audio>` element.
-
-## Platform Notes
-
-### Windows
-
-- Kokoro GPU usage requires NVIDIA CUDA 12.x drivers.
-
-### macOS
-
-- Piper works well for local CPU usage and requires no extra dependencies.
-- To use Kokoro on macOS, install with `.[kokoro]` — PyTorch will be pulled from PyPI (CPU/MPS, no CUDA needed). The CUDA index is skipped automatically.
-
-### Linux
-
-- Install PortAudio plus your normal ALSA or PulseAudio stack for playback.
-
-## Development
-
-```bash
-git clone https://github.com/yourusername/voice.git
-cd voice
-uv venv
-source .venv/bin/activate
-uv pip install -r requirements.txt
-uv pip install -e .
-```
-
-## Technical Details
-
-- Kokoro engine: Kokoro-82M through the `kokoro` package
-- Piper engine: Piper ONNX voices through `piper-tts`
-- Output format: WAV
-- Sample rates: 24 kHz for Kokoro, 22.05 kHz for Piper
-
-## Acknowledgments
-
-- [Kokoro TTS](https://huggingface.co/hexgrad/Kokoro-82M)
-- [Piper](https://github.com/rhasspy/piper)
-- [PyTorch](https://pytorch.org/)
 - [Hugging Face](https://huggingface.co/)
