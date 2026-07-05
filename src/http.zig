@@ -137,7 +137,7 @@ fn handleSpeak(daemon: *daemon_mod.Daemon, request: *std.http.Server.Request, io
 
     if (std.mem.eql(u8, mode, "download")) {
         const t0 = timing.elapsedSeconds(io);
-        const result = daemon.synthesize(alloc, preset, text) catch |err| {
+        const result = daemon.synthesize(alloc, preset, text, log) catch |err| {
             timing.logf(log, io, "[HTTP] synth error: {t}\n", .{err});
             try request.respond("{\"error\":\"synthesis failed\"}\n", .{ .status = .internal_server_error });
             return;
@@ -152,7 +152,7 @@ fn handleSpeak(daemon: *daemon_mod.Daemon, request: *std.http.Server.Request, io
     }
 
     const t0 = timing.elapsedSeconds(io);
-    const n = daemon.synthesizeAndPlay(preset, text, true) catch |err| {
+    const n = daemon.synthesizeAndPlay(preset, text, true, log) catch |err| {
         timing.logf(log, io, "[HTTP] synth error: {t}\n", .{err});
         try request.respond("{\"error\":\"synthesis failed\"}\n", .{ .status = .internal_server_error });
         return;

@@ -228,7 +228,7 @@ pub fn main(init: std.process.Init) !void {
         timing.logf(stdout, init.io, "[Voice] Loading '{s}' ({s}) standalone...\n", .{ resolved.preset_name, preset.engine });
         var d = try daemon_mod.Daemon.init(arena, init.io, cfg);
         d.force_cpu = opts.cpu;
-        const result = try d.synthesize(arena, preset, resolved.text);
+        const result = try d.synthesize(arena, preset, resolved.text, stdout);
         cli.applyGain(result.samples, opts.gain);
         timing.logf(stdout, init.io, "[Voice] Synthesized {d} samples ({d:.2}s audio)\n", .{
             result.samples.len,

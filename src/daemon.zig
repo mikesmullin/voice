@@ -85,7 +85,7 @@ pub const Daemon = struct {
             };
             timing.logf(log, self.io, "[Daemon] preloading '{s}' ({s})...\n", .{ name, preset.engine });
             const t0 = timing.elapsedSeconds(self.io);
-            _ = try self.synthesizeAndPlay(preset, "Ready.", false);
+            _ = try self.synthesizeAndPlay(preset, "Ready.", false, log);
             timing.logf(log, self.io, "[Daemon] '{s}' ready ({d:.2}s)\n", .{ name, timing.elapsedSeconds(self.io) - t0 });
         }
     }
@@ -95,28 +95,43 @@ pub const Daemon = struct {
     /// Synthesizes `text` with `preset`, returning samples + rate allocated
     /// from `alloc` (caller-owned, e.g. for writing to a WAV file - unlike
     /// `synthesizeAndPlay`'s internal frame arena).
-    pub fn synthesize(self: *Daemon, alloc: std.mem.Allocator, preset: config_mod.VoicePreset, text: []const u8) !SynthResult {
+    ///
+    /// If `log` is given, emits two engine-performance timestamps (server
+    /// side, since the client never sees a stream of samples to measure
+    /// this against - see the session notes on why client-side TTFB/TTLB
+    /// didn't make sense for a non-streaming protocol):
+    ///   - "phonemize done": G2P complete, about to run the ONNX model -
+    ///     the closest analog to "time to first byte" this pipeline has.
+    ///   - "synthesize done": the ONNX Run() call returned every sample at
+    ///     once (Piper/Kokoro aren't streaming inference) - "time to last
+    ///     byte", i.e. the actual engine/neural-net compute time.
+    pub fn synthesize(self: *Daemon, alloc: std.mem.Allocator, preset: config_mod.VoicePreset, text: []const u8, log: ?*std.Io.Writer) !SynthResult {
+        const t0 = timing.elapsedSeconds(self.io);
         if (std.mem.eql(u8, preset.engine, "kokoro")) {
             const voice = try self.getKokoroVoice();
             const phonemes = try self.kokoro_phonemizer.phonemize(alloc, text);
+            if (log) |l| timing.logf(l, self.io, "[Engine] phonemize done ({d:.3}s)\n", .{timing.elapsedSeconds(self.io) - t0});
             const samples = try voice.synthesize(alloc, phonemes, preset.voice, preset.speed);
+            if (log) |l| timing.logf(l, self.io, "[Engine] synthesize done ({d:.3}s)\n", .{timing.elapsedSeconds(self.io) - t0});
             return .{ .samples = samples, .sample_rate = 24000 };
         } else {
             const voice = try self.getPiperVoice(preset.voice);
             const ipa = try self.piper_phonemizer.plainIpa(alloc, text);
+            if (log) |l| timing.logf(l, self.io, "[Engine] phonemize done ({d:.3}s)\n", .{timing.elapsedSeconds(self.io) - t0});
             const samples = try voice.synthesize(alloc, ipa, 1.0 / preset.speed);
+            if (log) |l| timing.logf(l, self.io, "[Engine] synthesize done ({d:.3}s)\n", .{timing.elapsedSeconds(self.io) - t0});
             return .{ .samples = samples, .sample_rate = voice.config.sample_rate };
         }
     }
 
     /// Synthesizes `text` with `preset`, optionally playing it. Returns the
     /// sample count (for logging).
-    pub fn synthesizeAndPlay(self: *Daemon, preset: config_mod.VoicePreset, text: []const u8, play: bool) !usize {
+    pub fn synthesizeAndPlay(self: *Daemon, preset: config_mod.VoicePreset, text: []const u8, play: bool, log: ?*std.Io.Writer) !usize {
         var frame_arena = std.heap.ArenaAllocator.init(self.allocator);
         defer frame_arena.deinit();
         const alloc = frame_arena.allocator();
 
-        const result = try self.synthesize(alloc, preset, text);
+        const result = try self.synthesize(alloc, preset, text, log);
         if (play) try self.output.play(result.samples, result.sample_rate);
         return result.samples.len;
     }
@@ -160,7 +175,7 @@ pub const Daemon = struct {
         };
 
         const t0 = timing.elapsedSeconds(self.io);
-        const n = try self.synthesizeAndPlay(preset, text, true);
+        const n = try self.synthesizeAndPlay(preset, text, true, log);
         timing.logf(log, self.io, "[Daemon] {s}: {d} samples ({d:.2}s)\n", .{ preset_name, n, timing.elapsedSeconds(self.io) - t0 });
         try writeResponse(conn, self.io, "OK\n");
     }
