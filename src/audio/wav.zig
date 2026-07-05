@@ -1,4 +1,4 @@
-//! Minimal 16-bit PCM WAV file writer.
+//! Minimal 16-bit PCM WAV encoder/writer.
 
 const std = @import("std");
 
@@ -10,6 +10,21 @@ pub fn writeMono16(io: std.Io, path: []const u8, sample_rate: u32, samples: []co
     var writer = file.writer(io, &buf);
     const w = &writer.interface;
 
+    try writeHeaderAndSamples(w, sample_rate, samples);
+    try w.flush();
+}
+
+/// Encodes to an in-memory buffer (e.g. for an HTTP response body), rather
+/// than a file - same format as `writeMono16`.
+pub fn encodeMono16(alloc: std.mem.Allocator, sample_rate: u32, samples: []const f32) ![]u8 {
+    const total_size = 44 + samples.len * 2;
+    const buf = try alloc.alloc(u8, total_size);
+    var w: std.Io.Writer = .fixed(buf);
+    try writeHeaderAndSamples(&w, sample_rate, samples);
+    return buf;
+}
+
+fn writeHeaderAndSamples(w: *std.Io.Writer, sample_rate: u32, samples: []const f32) !void {
     const bytes_per_sample: u32 = 2;
     const data_size: u32 = @intCast(samples.len * bytes_per_sample);
     const byte_rate: u32 = sample_rate * bytes_per_sample;
@@ -33,5 +48,4 @@ pub fn writeMono16(io: std.Io, path: []const u8, sample_rate: u32, samples: []co
         const i: i16 = @intFromFloat(clamped * 32767.0);
         try w.writeInt(i16, i, .little);
     }
-    try w.flush();
 }

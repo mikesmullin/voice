@@ -4,11 +4,14 @@
 //! section 6's "serve/http merge" decision) - on its own OS thread since
 //! std.Io's default threaded backend is safe to share across threads.
 //!
-//! `mode=download` (returning WAV bytes instead of playing) is not yet
-//! implemented - only `mode=play` (the default) works so far.
+//! `mode=download` returns WAV bytes (for the browser SPA, milestone 6);
+//! `mode=play` (the default) plays through the daemon's own persistent
+//! audio output, same as the unix socket protocol.
 
 const std = @import("std");
 const daemon_mod = @import("daemon.zig");
+const wav = @import("audio/wav.zig");
+const cli = @import("cli.zig");
 
 pub fn serve(daemon: *daemon_mod.Daemon, io: std.Io, port: u16, log: *std.Io.Writer) !void {
     const addr = try std.Io.net.IpAddress.parseIp4("127.0.0.1", port);
@@ -54,13 +57,27 @@ fn handleConnection(daemon: *daemon_mod.Daemon, conn: *std.Io.net.Stream, io: st
         } else if (method == .POST and std.mem.eql(u8, target, "/speak")) {
             try handleSpeak(daemon, &request, io, log);
         } else if (method == .GET and std.mem.eql(u8, target, "/")) {
-            try request.respond("presence-voice v2 - see /health, /voices, /speak\n", .{});
+            try respondIndex(daemon, &request, io);
         } else {
             try request.respond("not found\n", .{ .status = .not_found });
         }
 
         if (!request.head.keep_alive) break;
     }
+}
+
+fn respondIndex(daemon: *daemon_mod.Daemon, request: *std.http.Server.Request, io: std.Io) !void {
+    var frame_arena = std.heap.ArenaAllocator.init(daemon.allocator);
+    defer frame_arena.deinit();
+    const alloc = frame_arena.allocator();
+
+    const html = std.Io.Dir.cwd().readFileAlloc(io, "web/index.html", alloc, .limited(1 << 20)) catch {
+        try request.respond("presence-voice v2 - see /health, /voices, /speak\n(web/index.html not found)\n", .{});
+        return;
+    };
+    try request.respond(html, .{
+        .extra_headers = &.{.{ .name = "content-type", .value = "text/html; charset=utf-8" }},
+    });
 }
 
 fn respondVoices(daemon: *daemon_mod.Daemon, request: *std.http.Server.Request) !void {
@@ -112,6 +129,30 @@ fn handleSpeak(daemon: *daemon_mod.Daemon, request: *std.http.Server.Request, io
         try request.respond("{\"error\":\"unknown voice\"}\n", .{ .status = .bad_request });
         return;
     };
+
+    const mode = if (obj.get("mode")) |v| v.string else "play";
+    const gain: f32 = if (obj.get("gain")) |v| switch (v) {
+        .integer => |i| @floatFromInt(i),
+        .float => |f| @floatCast(f),
+        else => 1.0,
+    } else 1.0;
+
+    if (std.mem.eql(u8, mode, "download")) {
+        const result = daemon.synthesize(alloc, preset, text) catch |err| {
+            try log.print("[HTTP] synth error: {t}\n", .{err});
+            try log.flush();
+            try request.respond("{\"error\":\"synthesis failed\"}\n", .{ .status = .internal_server_error });
+            return;
+        };
+        cli.applyGain(result.samples, std.math.clamp(gain, 0.0, 2.0));
+        const wav_bytes = try wav.encodeMono16(alloc, result.sample_rate, result.samples);
+        try log.print("[HTTP] /speak {s} (download): {d} samples\n", .{ voice_name, result.samples.len });
+        try log.flush();
+        try request.respond(wav_bytes, .{
+            .extra_headers = &.{.{ .name = "content-type", .value = "audio/wav" }},
+        });
+        return;
+    }
 
     const n = daemon.synthesizeAndPlay(preset, text, true) catch |err| {
         try log.print("[HTTP] synth error: {t}\n", .{err});

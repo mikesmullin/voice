@@ -1,0 +1,159 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>presence-voice v2</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script defer src="https://unpkg.com/alpinejs@3.x.x/dist/cdn.min.js"></script>
+  <style>
+    body {
+      background:
+        radial-gradient(900px 500px at 10% -10%, rgba(20, 241, 217, 0.20) 0%, transparent 60%),
+        radial-gradient(900px 500px at 100% 0%, rgba(46, 240, 255, 0.18) 0%, transparent 45%),
+        radial-gradient(600px 400px at 50% 100%, rgba(255, 79, 216, 0.14) 0%, transparent 55%),
+        #070b14;
+    }
+    .accent-btn {
+      background: linear-gradient(120deg, #14f1d9 0%, #2ef0ff 45%, #ff4fd8 100%);
+    }
+  </style>
+</head>
+<body class="min-h-screen text-slate-100 flex items-center justify-center p-6">
+  <main
+    x-data="app()"
+    x-init="loadVoices()"
+    class="w-full max-w-2xl bg-[#0f1629] border border-[#2a3b5f] rounded-2xl shadow-2xl p-6"
+  >
+    <h1 class="text-xl font-semibold mb-1">presence-voice v2</h1>
+    <p class="text-sm text-slate-400 mb-5">
+      Zig daemon + ONNX Runtime (Piper + Kokoro). Successor to
+      <span class="text-slate-300">test/streaming_audio.html</span> - same idea, talks to
+      <code class="text-teal-300">POST /speak</code> with <code class="text-teal-300">mode=download</code>.
+    </p>
+
+    <div class="grid grid-cols-2 gap-3 mb-4">
+      <div class="col-span-2">
+        <label class="block text-xs text-slate-400 mb-1">Voice preset</label>
+        <select
+          x-model="voice"
+          class="w-full rounded-lg bg-[#0a1225] border border-[#2d4f7a] px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-cyan-400/40"
+        >
+          <template x-for="v in voices" :key="v.name">
+            <option :value="v.name" x-text="`${v.name} (${v.engine} - ${v.voice})`"></option>
+          </template>
+        </select>
+      </div>
+
+      <div class="col-span-2">
+        <label class="block text-xs text-slate-400 mb-1">Text</label>
+        <input
+          x-model="text"
+          type="text"
+          class="w-full rounded-lg bg-[#0a1225] border-2 border-teal-400 px-3 py-2 text-sm font-medium focus:outline-none focus:ring-4 focus:ring-pink-400/20"
+        />
+      </div>
+
+      <div>
+        <label class="block text-xs text-slate-400 mb-1">Gain</label>
+        <input
+          x-model.number="gain"
+          type="number" step="0.1" min="0" max="2"
+          class="w-full rounded-lg bg-[#0a1225] border border-[#2d4f7a] px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-cyan-400/40"
+        />
+      </div>
+
+      <div class="flex items-end">
+        <button
+          @click="speak()"
+          :disabled="busy"
+          class="accent-btn w-full rounded-lg px-3 py-2 text-sm font-semibold text-[#031018] disabled:opacity-50"
+          x-text="busy ? 'Generating…' : 'Generate Audio'"
+        ></button>
+      </div>
+    </div>
+
+    <div class="text-sm text-slate-400 min-h-[1.25rem]" x-text="status"></div>
+    <div class="text-sm text-teal-300 font-semibold min-h-[1.25rem] mt-1" x-text="latency"></div>
+    <audio x-ref="player" controls preload="none" class="w-full mt-3"></audio>
+  </main>
+
+  <script>
+    function app() {
+      return {
+        voices: [],
+        voice: "",
+        text: "Hello from presence-voice v2.",
+        gain: 1.0,
+        busy: false,
+        status: "",
+        latency: "Start latency: —",
+        objectUrl: null,
+
+        async loadVoices() {
+          try {
+            const res = await fetch("/voices");
+            this.voices = await res.json();
+            if (this.voices.length > 0) this.voice = this.voices[0].name;
+          } catch (e) {
+            this.status = `Failed to load voices: ${e.message}`;
+          }
+        },
+
+        async speak() {
+          if (!this.text.trim()) {
+            this.status = "Text is required.";
+            return;
+          }
+          this.busy = true;
+          this.status = "Generating audio...";
+          this.latency = "Start latency: measuring...";
+          const startedAt = performance.now();
+
+          try {
+            const res = await fetch("/speak", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({
+                text: this.text,
+                voice: this.voice,
+                mode: "download",
+                gain: this.gain,
+              }),
+            });
+            if (!res.ok) {
+              const body = await res.text();
+              throw new Error(`HTTP ${res.status}: ${body}`);
+            }
+            const blob = await res.blob();
+            if (this.objectUrl) URL.revokeObjectURL(this.objectUrl);
+            this.objectUrl = URL.createObjectURL(blob);
+
+            const player = this.$refs.player;
+            player.src = this.objectUrl;
+            const playing = new Promise((resolve, reject) => {
+              const onPlaying = () => { cleanup(); resolve(performance.now() - startedAt); };
+              const onError = () => { cleanup(); reject(new Error("Playback failed to start.")); };
+              const cleanup = () => {
+                player.removeEventListener("playing", onPlaying);
+                player.removeEventListener("error", onError);
+              };
+              player.addEventListener("playing", onPlaying);
+              player.addEventListener("error", onError);
+            });
+            await player.play();
+            const ms = Math.round(await playing);
+            this.status = `Playing ${blob.size} bytes of WAV audio.`;
+            this.latency = `Start latency: ${ms} ms from click to first playback.`;
+          } catch (e) {
+            this.status = `Request failed: ${e.message}`;
+            this.latency = "Start latency: unavailable";
+          } finally {
+            this.busy = false;
+          }
+        },
+      };
+    }
+  </script>
+</body>
+</html>
