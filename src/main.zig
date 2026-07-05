@@ -8,6 +8,7 @@ const kokoro = @import("engines/kokoro.zig");
 const piper = @import("engines/piper.zig");
 const ort = @import("engines/onnxruntime.zig");
 const wav = @import("audio/wav.zig");
+const config_mod = @import("config.zig");
 
 pub fn main(init: std.process.Init) !void {
     const arena = init.arena.allocator();
@@ -59,6 +60,27 @@ pub fn main(init: std.process.Init) !void {
 
         try wav.writeMono16(init.io, out_path, voice.config.sample_rate, samples);
         try stdout.print("[Piper] wrote {s}\n", .{out_path});
+        try stdout.flush();
+        return;
+    }
+
+    if (args.len > 1 and std.mem.eql(u8, args[1], "--config-test")) {
+        const config_path = if (args.len > 2) args[2] else "config.yaml";
+        const cfg = try config_mod.Config.load(arena, init.io, config_path);
+        try stdout.print("fallback_voice: {s}\n", .{cfg.fallback_voice orelse "(none)"});
+        try stdout.print("default_preset: {s}\n", .{cfg.default_preset orelse "(none)"});
+        try stdout.print("preload ({d}):\n", .{cfg.preload.items.len});
+        for (cfg.preload.items) |name| try stdout.print("  - {s}\n", .{name});
+        try stdout.print("voices ({d}):\n", .{cfg.voices.count()});
+        var it = cfg.voices.iterator();
+        var shown: usize = 0;
+        while (it.next()) |kv| : (shown += 1) {
+            if (shown >= 10) {
+                try stdout.print("  ... ({d} more)\n", .{cfg.voices.count() - 10});
+                break;
+            }
+            try stdout.print("  {s}: engine={s} voice={s} speed={d}\n", .{ kv.key_ptr.*, kv.value_ptr.engine, kv.value_ptr.voice, kv.value_ptr.speed });
+        }
         try stdout.flush();
         return;
     }
