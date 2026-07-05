@@ -25,6 +25,10 @@ everything else (curl, the browser SPA).
 ## Quickstart
 
 ```bash
+git clone --recurse-submodules git@github.com:mikesmullin/voice.git
+cd voice
+git checkout v2   # not yet the default branch
+
 # system dependencies (Arch shown; adjust for your distro)
 sudo pacman -S espeak-ng cudnn   # cudnn optional, only needed for Kokoro's CUDA EP
 
@@ -34,12 +38,18 @@ sudo pacman -S espeak-ng cudnn   # cudnn optional, only needed for Kokoro's CUDA
 curl https://www.zvm.app/install.sh | bash
 zvm install master && zvm use master
 
-# ONNX Runtime (vendored, not committed - vendor/ is gitignored)
+# ONNX Runtime (vendored, not committed - vendor/onnxruntime is gitignored)
 mkdir -p vendor && cd vendor
 curl -fLO https://github.com/microsoft/onnxruntime/releases/download/v1.27.0/onnxruntime-linux-x64-gpu_cuda13-1.27.0.tgz
 tar xzf onnxruntime-linux-x64-gpu_cuda13-1.27.0.tgz
 mv onnxruntime-linux-x64-gpu_cuda13-1.27.0 onnxruntime
 cd ..
+
+# Model files (not committed - ./models/ is gitignored). Also initializes
+# vendor/zig-phonemes (a git submodule - build-time G2P dependency) if you
+# didn't clone with --recurse-submodules above.
+git submodule update --init
+./scripts/fetch-models.sh
 
 zig build
 ./zig-out/bin/voice list

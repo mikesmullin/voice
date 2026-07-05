@@ -4,12 +4,12 @@ pub fn build(b: *std.Build) void {
     const target = b.standardTargetOptions(.{});
     const optimize = b.standardOptimizeOption(.{});
 
-    // G2P: Fable's zig-phenomes (tmp/zig-phenomes, evaluated per
+    // G2P: Fable's zig-phonemes (vendor/zig-phonemes, evaluated per
     // tmp/PHENOMES.md/PHASE3_PLAN.md section 2 as an alternative to plain
-    // espeak-ng). Referenced in place, read-only - not vendored/copied yet
-    // since it's still under active development in its own directory.
+    // espeak-ng). A git submodule (see .gitmodules) - run
+    // `git submodule update --init` after cloning this repo.
     const g2p_module = b.createModule(.{
-        .root_source_file = b.path("tmp/zig-phenomes/src/g2p.zig"),
+        .root_source_file = b.path("vendor/zig-phonemes/src/g2p.zig"),
         .target = target,
         .optimize = optimize,
         .link_libc = true,
@@ -21,7 +21,7 @@ pub fn build(b: *std.Build) void {
         .optimize = optimize,
         .link_libc = true,
     });
-    exe_mod.addImport("zig_phenomes", g2p_module);
+    exe_mod.addImport("zig_phonemes", g2p_module);
 
     // ONNX Runtime (vendor/onnxruntime, v1.27.0 gpu_cuda13 release - CPU
     // and CUDA execution providers both in one libonnxruntime.so - see

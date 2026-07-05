@@ -33,8 +33,8 @@ pub fn main(init: std.process.Init) !void {
 
     if (args.len > 1 and std.mem.eql(u8, args[1], "--phonemize")) {
         const text = if (args.len > 2) args[2] else "Hello world, this is a test.";
-        const phonemizer = try kokoro.Phonemizer.init(arena, init.io, "tmp/zig-phenomes/data", false);
-        try stdout.print("[Kokoro] G2P (zig-phenomes) loaded\n", .{});
+        const phonemizer = try kokoro.Phonemizer.init(arena, init.io, "vendor/zig-phonemes/data", false);
+        try stdout.print("[Kokoro] G2P (zig-phonemes) loaded\n", .{});
         const phonemes = try phonemizer.phonemize(arena, text);
         try stdout.print("text:  {s}\nphon:  {s}\n", .{ text, phonemes });
         try stdout.flush();
@@ -105,12 +105,12 @@ pub fn main(init: std.process.Init) !void {
         const text = args[5];
         const out_path = args[6];
 
-        const phonemizer = try kokoro.Phonemizer.init(arena, init.io, "tmp/zig-phenomes/data", false);
+        const phonemizer = try kokoro.Phonemizer.init(arena, init.io, "vendor/zig-phonemes/data", false);
         const phonemes = try phonemizer.phonemize(arena, text);
         try stdout.print("[Kokoro] phonemes: {s}\n", .{phonemes});
 
         const rt = try ort.Runtime.init();
-        var voice = try kokoro.Voice.load(&rt, arena, init.io, model_path, "tmp/zig-phenomes/data/kokoro_vocab.json", voices_bin_path);
+        var voice = try kokoro.Voice.load(&rt, arena, init.io, model_path, "vendor/zig-phonemes/data/kokoro_vocab.json", voices_bin_path);
         try stdout.print("[Kokoro] model + voices pack loaded\n", .{});
 
         const samples = try voice.synthesize(arena, phonemes, voice_name, 1.0);
@@ -132,12 +132,12 @@ pub fn main(init: std.process.Init) !void {
         const voice_name = args[4];
         const text = if (args.len > 5) args[5] else "Hello world, this is a test.";
 
-        const phonemizer = try kokoro.Phonemizer.init(arena, init.io, "tmp/zig-phenomes/data", false);
+        const phonemizer = try kokoro.Phonemizer.init(arena, init.io, "vendor/zig-phonemes/data", false);
         const phonemes = try phonemizer.phonemize(arena, text);
 
         var out = audio_output.Output.init(arena);
         const rt = try ort.Runtime.init();
-        var voice = try kokoro.Voice.load(&rt, arena, init.io, model_path, "tmp/zig-phenomes/data/kokoro_vocab.json", voices_bin_path);
+        var voice = try kokoro.Voice.load(&rt, arena, init.io, model_path, "vendor/zig-phonemes/data/kokoro_vocab.json", voices_bin_path);
 
         const samples = try voice.synthesize(arena, phonemes, voice_name, 1.0);
         try stdout.print("[Kokoro] synthesized {d} samples\n", .{samples.len});

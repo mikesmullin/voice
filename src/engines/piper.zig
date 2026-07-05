@@ -3,8 +3,8 @@
 //! ONNX model -> audio"). Milestone 2: ONNX Runtime inference now wired up
 //! (CPU execution provider only so far).
 //!
-//! Reuses zig-phenomes' dlopen-based Espeak wrapper (tmp/zig-phenomes/src/
-//! espeak.zig, re-exported via g2p.zig as `Espeak`) rather than adding a
+//! Reuses zig-phonemes' dlopen-based Espeak wrapper (vendor/zig-phonemes/
+//! src/espeak.zig, re-exported via g2p.zig as `Espeak`) rather than adding a
 //! separate link-time espeak-ng dependency: espeak-ng is loaded at runtime
 //! via dlopen (see that file), so no `-lespeak-ng`/pkg-config wiring is
 //! needed in build.zig - only the shared library + espeak-ng-data need to
@@ -12,10 +12,10 @@
 //! package).
 
 const std = @import("std");
-const zig_phenomes = @import("zig_phenomes");
+const zig_phonemes = @import("zig_phonemes");
 const ort = @import("onnxruntime.zig");
 
-pub const Espeak = zig_phenomes.Espeak;
+pub const Espeak = zig_phonemes.Espeak;
 
 pub const Phonemizer = struct {
     espeak: Espeak,

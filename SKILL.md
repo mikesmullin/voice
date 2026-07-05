@@ -23,6 +23,22 @@ intentionally not finished yet.
   `using CPU execution provider`).
 - Piper always runs on CPU (tiny model, already realtime - not worth GPU).
 
+## Fetching models
+
+Model files aren't committed (`./models/` is gitignored). Fetch them once:
+
+```bash
+git submodule update --init   # vendor/zig-phonemes (build-time G2P dependency)
+./scripts/fetch-models.sh     # ./models/kokoro/ + ./models/piper/
+```
+
+The script downloads Kokoro's latest fp16 ONNX export + voices pack
+(from `thewh1teagle/kokoro-onnx`'s releases), plus one Piper voice per
+preset in `config.yaml`'s `preload:` list. To use additional Piper
+presets, either add them to `preload:` first and re-run the script, or
+fetch them by hand into `models/piper/` using the same
+`rhasspy/piper-voices` URL pattern (see the script for the exact shape).
+
 ## Core Commands
 
 ### Direct synthesis (daemon-backed - the fast path)
@@ -100,11 +116,15 @@ Alpine.js + Tailwind demo page - open `http://127.0.0.1:3124/` once
 
 ## Known gaps (intentional, not oversights)
 
-- **Model paths are hardcoded** (`src/daemon.zig`): Kokoro's `.onnx`/
-  voices-bin paths and the Piper models directory point at this dev
-  machine's known file locations, not a `config.yaml` field - there's no
-  approved v2 schema for this yet (see `tmp/PHASE3_PLAN.md`'s "Still
-  open" section).
+- **Model paths are constants, not a `config.yaml` field**
+  (`src/daemon.zig`): they now point at `./models/kokoro/` and
+  `./models/piper/` (self-contained, fetched via
+  `./scripts/fetch-models.sh` - see "Fetching models" above) rather than
+  a dev-machine-specific path, but there's still no approved v2 schema
+  for per-preset model paths yet (see `tmp/PHASE3_PLAN.md`'s "Still
+  open" section). Piper presets outside `config.yaml`'s `preload:` list
+  need their `.onnx`/`.onnx.json` fetched into `models/piper/` by hand
+  for now (same URL pattern the fetch script uses).
 - **`-o`/`-g` only work with `local`**, not `client`/bare requests - the
   unix socket protocol is a simple `preset\ttext\n` line, with no room for
   extra options yet. HTTP's `POST /speak` DOES support `gain` and
@@ -116,10 +136,11 @@ Alpine.js + Tailwind demo page - open `http://127.0.0.1:3124/` once
 - **No NFD Unicode normalization** in Piper's phoneme splitting (Zig's
   std has none built in) - a few precomposed diacritics may be silently
   dropped as "missing phoneme". Hasn't been audibly wrong so far.
-- **G2P for Kokoro** uses Fable's `tmp/zig-phenomes` (evaluated as a
-  misaki alternative, see `tmp/PHENOMES.md`) - referenced directly from
-  `tmp/` (gitignored), not yet vendored into the tracked source tree.
-  Revisit once the comparison against plain espeak-ng is finalized.
+- **G2P for Kokoro** uses Fable's `zig-phonemes` (evaluated as a misaki
+  alternative, see `tmp/PHENOMES.md`) - a git submodule at
+  `vendor/zig-phonemes` (run `git submodule update --init` after
+  cloning). Revisit once the comparison against plain espeak-ng is
+  finalized.
 
 ## Toolchain notes
 

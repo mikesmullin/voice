@@ -2,8 +2,9 @@
 .zig-cache/
 zig-out/
 
-# Vendored native libs (fetched by a setup step, not committed)
-vendor/
+# Vendored native libs (fetched by a setup step, not committed).
+# vendor/zig-phonemes is a git submodule (tracked), not covered by this.
+vendor/onnxruntime/
 
 # Virtual environments
 venv/
@@ -26,9 +27,8 @@ Thumbs.db
 *.ogg
 *.mp3
 
-# Models (large downloadable files only - keep pkl/json in git)
-models/TTS/*.onnx
-models/TTS/*.bin
+# Model files (fetched via ./scripts/fetch-models.sh, not committed)
+models/
 
 # Config overrides
 config.local.yaml

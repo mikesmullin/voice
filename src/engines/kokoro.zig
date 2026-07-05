@@ -10,20 +10,18 @@
 //!   - speed: float32 [1]
 //!   - output "audio": float32 1D waveform
 //!
-//! G2P is provided by Fable's zig-phenomes (tmp/zig-phenomes), evaluated as
-//! an alternative to plain espeak-ng. Referenced as a build.zig module
-//! import ("zig_phenomes") pointed directly at that directory - not
-//! vendored/copied into src/ yet, since it's still under active
-//! development there. Do not edit tmp/zig-phenomes/ from this side; treat
-//! it as a read-only dependency until the comparison in PHENOMES.md is
-//! settled.
+//! G2P is provided by Fable's zig-phonemes (vendor/zig-phonemes), evaluated
+//! as an alternative to plain espeak-ng. A git submodule (see
+//! .gitmodules) - run `git submodule update --init` after cloning this
+//! repo. Treat it as a read-only dependency (owned by its own repo) until
+//! the comparison in PHENOMES.md is settled.
 
 const std = @import("std");
-const zig_phenomes = @import("zig_phenomes");
+const zig_phonemes = @import("zig_phonemes");
 const ort = @import("onnxruntime.zig");
 const npz = @import("npz.zig");
 
-pub const G2P = zig_phenomes.G2P;
+pub const G2P = zig_phonemes.G2P;
 
 pub const Phonemizer = struct {
     g2p: G2P,

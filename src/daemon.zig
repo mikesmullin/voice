@@ -2,11 +2,16 @@
 //! preload, per tmp/PHASE3_PLAN.md sections 4/8. Single-threaded, blocking
 //! accept loop - concurrency/HTTP are later milestones (4/5).
 //!
-//! Known gaps (not yet covered by an approved config schema - see
-//! tmp/PHASE3_PLAN.md's "Still open" items): Kokoro model/voices-bin paths
-//! and the Piper models directory are hardcoded to this dev machine's
-//! known file locations rather than read from config.yaml. Fine for a
-//! skeleton; needs a real config field before this leaves this machine.
+//! Model files live under ./models/ (gitignored - fetch with
+//! ./scripts/fetch-models.sh) so this repo is self-contained; paths below
+//! are relative to the repo root, matching how the daemon is meant to be
+//! run (see voice.service's WorkingDirectory).
+//!
+//! Known gap (not yet covered by an approved config schema - see
+//! tmp/PHASE3_PLAN.md's "Still open" items): these paths are constants
+//! here rather than config.yaml fields. Fine for a skeleton; needs a real
+//! config field before voices outside config.yaml's preload list can use
+//! anything other than models/piper/<voice-id>.onnx by convention.
 
 const std = @import("std");
 const config_mod = @import("config.zig");
@@ -17,10 +22,10 @@ const audio_output = @import("audio/output.zig");
 
 // TODO: move to config.yaml once the v2 schema for model locations is
 // decided (see tmp/PHASE3_PLAN.md "Still open").
-const KOKORO_MODEL_PATH = "/workspace/Making_Games/GLaDOS/models/TTS/kokoro-v1.0.fp16.onnx";
-const KOKORO_VOICES_BIN_PATH = "/workspace/Making_Games/GLaDOS/models/TTS/kokoro-voices-v1.0.bin";
-const KOKORO_VOCAB_PATH = "tmp/zig-phenomes/data/kokoro_vocab.json";
-const PIPER_MODELS_DIR = "/home/user/.cache/voice/piper-models";
+const KOKORO_MODEL_PATH = "models/kokoro/kokoro-v1.0.fp16.onnx";
+const KOKORO_VOICES_BIN_PATH = "models/kokoro/voices-v1.0.bin";
+const KOKORO_VOCAB_PATH = "vendor/zig-phonemes/data/kokoro_vocab.json";
+const PIPER_MODELS_DIR = "models/piper";
 const ESPEAK_LIB_PATH = "/usr/lib/libespeak-ng.so";
 const ESPEAK_DATA_PATH = "/usr/share/espeak-ng-data";
 
@@ -43,7 +48,7 @@ pub const Daemon = struct {
             .config = config,
             .rt = try ort.Runtime.init(),
             .output = audio_output.Output.init(alloc),
-            .kokoro_phonemizer = try kokoro.Phonemizer.init(alloc, io, "tmp/zig-phenomes/data", false),
+            .kokoro_phonemizer = try kokoro.Phonemizer.init(alloc, io, "vendor/zig-phonemes/data", false),
             .piper_phonemizer = try piper.Phonemizer.init(alloc, ESPEAK_LIB_PATH, ESPEAK_DATA_PATH, false),
             .piper_voices = std.StringHashMap(piper.Voice).init(alloc),
         };
