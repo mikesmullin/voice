@@ -30,6 +30,7 @@ const std = @import("std");
 const sokol = @import("sokol");
 const saudio = sokol.audio;
 const world_mod = @import("world.zig");
+const feature_tap = @import("feature_tap.zig");
 const resample = @import("resample.zig").resample;
 const wav_mod = @import("wav.zig");
 const effects_mod = @import("effects.zig");
@@ -46,6 +47,9 @@ fn streamCb(buffer: [*c]f32, num_frames: c_int, num_channels: c_int, user_data: 
     const n: usize = @intCast(num_frames);
     const ch: usize = @intCast(num_channels);
     world.mix(buffer[0 .. n * ch], @intCast(num_frames), @intCast(num_channels));
+    // Ada feature-frame tap: this callback IS the playback clock, so frames
+    // computed here are aligned to what the ears hear (mono mix, ch == 1).
+    feature_tap.processMixed(buffer[0..n], !world.idle());
 }
 
 pub const Output = struct {

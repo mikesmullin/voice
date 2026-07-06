@@ -20,6 +20,7 @@ const kokoro = @import("engines/kokoro.zig");
 const piper = @import("engines/piper.zig");
 const ort = @import("engines/onnxruntime.zig");
 const audio_output = @import("audio/output.zig");
+const feature_tap = @import("audio/feature_tap.zig");
 const linux_sink = @import("audio/linux_sink.zig");
 const effects = @import("audio/effects.zig");
 const llm = @import("llm.zig");
@@ -206,6 +207,7 @@ pub const Daemon = struct {
         }
 
         if (play) {
+            feature_tap.speakStart(text);
             if (sink) |sink_name| {
                 try linux_sink.playToSink(self.allocator, result.samples, result.sample_rate, sink_name);
             } else if (resolved.stinger_files.items.len > 0 or resolved.background != null) {
@@ -222,12 +224,21 @@ pub const Daemon = struct {
     /// (`speaker` empty = default sink; `effects` empty = none, otherwise
     /// comma-separated effect preset names); replies `OK\n` or
     /// `ERR <msg>\n`.
+    ///
+    /// Two special one-tab request lines turn the connection into a
+    /// long-lived push stream owned by feature_tap (Ada's orb — spec in
+    /// /workspace/ada/docs/PROTOCOL.md): `subscribe\tlevels` (binary
+    /// 36-byte FeatureFrames, ~60 Hz, aligned to the playback clock) and
+    /// `subscribe\tevents` (speak-start/speak-end JSON lines). Both reply
+    /// `OK\n` first.
     pub fn serve(self: *Daemon, socket_path: []const u8, log: *std.Io.Writer) !void {
         std.Io.Dir.cwd().deleteFile(self.io, socket_path) catch {};
 
         const addr = try std.Io.net.UnixAddress.init(socket_path);
         var server = try addr.listen(self.io, .{});
         defer server.socket.close(self.io);
+
+        try feature_tap.start(self.allocator, self.io, 24000);
 
         timing.logf(log, self.io, "[Daemon] Listening on unix://{s}\n", .{socket_path});
         timing.logf(log, self.io, "presence-voice ready. Use 'voice <preset> <text>' to synthesize.\n", .{});
@@ -237,17 +248,38 @@ pub const Daemon = struct {
                 timing.logf(log, self.io, "[Daemon] accept error: {t}\n", .{err});
                 continue;
             };
-            defer conn.close(self.io);
-            self.handleConnection(&conn, log) catch |err| {
+            const handoff = self.handleConnection(&conn, log) catch |err| {
                 timing.logf(log, self.io, "[Daemon] request error: {t}\n", .{err});
+                conn.close(self.io);
+                continue;
             };
+            switch (handoff) {
+                .close => conn.close(self.io),
+                // connection now belongs to the tap's fan-out thread
+                .subscribed => {},
+            }
         }
     }
 
-    fn handleConnection(self: *Daemon, conn: *std.Io.net.Stream, log: *std.Io.Writer) !void {
+    const HandOff = enum { close, subscribed };
+
+    fn handleConnection(self: *Daemon, conn: *std.Io.net.Stream, log: *std.Io.Writer) !HandOff {
         var read_buf: [1 << 16]u8 = undefined;
         var reader = conn.reader(self.io, &read_buf);
         const line = try reader.interface.takeDelimiterExclusive('\n');
+
+        if (std.mem.eql(u8, line, "subscribe\tlevels")) {
+            try writeResponse(conn, self.io, "OK\n");
+            try feature_tap.addLevelsSubscriber(conn.*);
+            timing.logf(log, self.io, "[Daemon] levels subscriber added\n", .{});
+            return .subscribed;
+        }
+        if (std.mem.eql(u8, line, "subscribe\tevents")) {
+            try writeResponse(conn, self.io, "OK\n");
+            try feature_tap.addEventsSubscriber(conn.*);
+            timing.logf(log, self.io, "[Daemon] events subscriber added\n", .{});
+            return .subscribed;
+        }
 
         const tab1 = std.mem.indexOfScalar(u8, line, '\t') orelse return error.BadRequest;
         const preset_name = line[0..tab1];
@@ -261,7 +293,7 @@ pub const Daemon = struct {
 
         const preset = self.config.getPreset(preset_name) orelse {
             try writeResponse(conn, self.io, "ERR unknown preset\n");
-            return;
+            return .close;
         };
 
         var frame_arena = std.heap.ArenaAllocator.init(self.allocator);
@@ -276,16 +308,17 @@ pub const Daemon = struct {
         const n = self.synthesizeAndPlay(preset, text, true, log, if (speaker_alias.len == 0) null else speaker_alias, effect_names.items) catch |err| {
             if (err == error.UnknownSpeaker) {
                 try writeResponse(conn, self.io, "ERR unknown speaker (see 'voice speakers')\n");
-                return;
+                return .close;
             }
             if (err == error.UnknownEffect) {
                 try writeResponse(conn, self.io, "ERR unknown effect (see config.yaml's effects: block)\n");
-                return;
+                return .close;
             }
             return err;
         };
         timing.logf(log, self.io, "[Daemon] {s}: {d} samples ({d:.2}s)\n", .{ preset_name, n, timing.elapsedSeconds(self.io) - t0 });
         try writeResponse(conn, self.io, "OK\n");
+        return .close;
     }
 
     fn writeResponse(conn: *std.Io.net.Stream, io: std.Io, msg: []const u8) !void {
