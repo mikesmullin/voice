@@ -85,6 +85,17 @@ pub const World = struct {
         return 0;
     }
 
+    /// Drops everything queued (and currently playing) on one channel —
+    /// the INTERRUPT scheduling primitive. Safe against the audio thread:
+    /// same lock `mix()` takes.
+    pub fn clearChannel(self: *World, idx: usize) void {
+        self.lock();
+        defer self.mutex.unlock();
+        var ch = &self.channels[idx];
+        for (ch.queue.items) |e| self.allocator.free(e.samples);
+        ch.queue.clearRetainingCapacity();
+    }
+
     /// True once every channel's queue is empty (nothing left to play).
     pub fn idle(self: *World) bool {
         self.lock();

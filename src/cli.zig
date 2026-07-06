@@ -16,6 +16,10 @@ pub const Options = struct {
     stinger: ?[]const u8 = null,
     speaker: ?[]const u8 = null,
     effects: std.ArrayList([]const u8) = .empty,
+    /// -I/--interrupt: stop any playing/queued speech before this one.
+    /// The wire protocol's `schedule` field is always explicit — this
+    /// flag selects `interrupt`; without it the client sends `enqueue`.
+    interrupt: bool = false,
     gain: f32 = 1.0,
     help: bool = false,
     positionals: std.ArrayList([]const u8) = .empty,
@@ -53,6 +57,8 @@ pub fn parseOptions(alloc: std.mem.Allocator, args: []const []const u8) !Options
             opts.stinger = args[i];
         } else if (std.mem.startsWith(u8, a, "--stinger=")) {
             opts.stinger = a[10..];
+        } else if (eqlAny(a, &.{ "-I", "--interrupt" })) {
+            opts.interrupt = true;
         } else if (eqlAny(a, &.{ "-d", "--speaker" }) and i + 1 < args.len) {
             i += 1;
             opts.speaker = args[i];
@@ -134,6 +140,8 @@ pub const HELP_TEXT =
     \\    -s, --stinger <name>  Play a configured stinger before speech (not yet implemented)
     \\    -d, --speaker <alias> Route audio to a configured speaker alias (see `voice speakers`; Linux only so far)
     \\    -e, --effect <name>   Apply a configured effect preset (repeatable, applied in order given)
+    \\    -I, --interrupt       Stop any playing/queued speech before this one ("client" only;
+    \\                          default is to enqueue behind whatever is already speaking)
     \\    -g, --gain <value>    Apply linear gain to synthesized voice audio (range: 0.0-2.0, default 1.0; local only, so far)
     \\    -h, --help            Show this help
     \\

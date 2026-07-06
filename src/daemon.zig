@@ -220,10 +220,21 @@ pub const Daemon = struct {
     }
 
     /// Single-threaded blocking accept loop on a unix socket. Protocol: one
-    /// line per request, `preset<TAB>speaker<TAB>effects<TAB>text\n`
+    /// line per request,
+    /// `preset<TAB>speaker<TAB>effects<TAB>schedule<TAB>text\n`
     /// (`speaker` empty = default sink; `effects` empty = none, otherwise
     /// comma-separated effect preset names); replies `OK\n` or
     /// `ERR <msg>\n`.
+    ///
+    /// `schedule` is REQUIRED and explicit — clients must say what they
+    /// mean when two utterances collide:
+    ///   - `enqueue`:   queue behind whatever speech is already playing
+    ///                  (gapless FIFO — Ada's per-sentence streaming path)
+    ///   - `interrupt`: stop any playing/queued speech first, then speak
+    /// `interrupt` with EMPTY text is the stop primitive: silences speech
+    /// and replies OK without synthesizing anything. (Interrupt only
+    /// affects the daemon's own speech channel; explicit-speaker
+    /// `linux_sink` playback is fire-and-forget and can't be recalled.)
     ///
     /// Two special one-tab request lines turn the connection into a
     /// long-lived push stream owned by feature_tap (Ada's orb — spec in
@@ -289,7 +300,34 @@ pub const Daemon = struct {
         const rest2 = rest1[tab2 + 1 ..];
         const tab3 = std.mem.indexOfScalar(u8, rest2, '\t') orelse return error.BadRequest;
         const effects_field = rest2[0..tab3];
-        const text = rest2[tab3 + 1 ..];
+        const rest3 = rest2[tab3 + 1 ..];
+        const tab4 = std.mem.indexOfScalar(u8, rest3, '\t') orelse {
+            try writeResponse(conn, self.io, "ERR missing schedule field (protocol is preset\\tspeaker\\teffects\\tschedule\\ttext; schedule = enqueue|interrupt)\n");
+            return .close;
+        };
+        const schedule_field = rest3[0..tab4];
+        const text = rest3[tab4 + 1 ..];
+
+        const interrupt = std.mem.eql(u8, schedule_field, "interrupt");
+        if (!interrupt and !std.mem.eql(u8, schedule_field, "enqueue")) {
+            try writeResponse(conn, self.io, "ERR schedule must be 'enqueue' or 'interrupt'\n");
+            return .close;
+        }
+
+        // stop whatever is talking *before* spending synthesis time — the
+        // point of interrupt is immediate silence
+        if (interrupt) self.output.stopSpeech();
+
+        if (text.len == 0) {
+            if (interrupt) {
+                // stop primitive: silence only, nothing to say
+                timing.logf(log, self.io, "[Daemon] speech interrupted (stop)\n", .{});
+                try writeResponse(conn, self.io, "OK\n");
+                return .close;
+            }
+            try writeResponse(conn, self.io, "ERR empty text\n");
+            return .close;
+        }
 
         const preset = self.config.getPreset(preset_name) orelse {
             try writeResponse(conn, self.io, "ERR unknown preset\n");

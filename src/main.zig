@@ -341,7 +341,9 @@ pub fn main(init: std.process.Init) !void {
     var write_buf: [4096]u8 = undefined;
     var writer = conn.writer(init.io, &write_buf);
     const effects_csv = try std.mem.join(arena, ",", opts.effects.items);
-    try writer.interface.print("{s}\t{s}\t{s}\t{s}\n", .{ resolved.preset_name, opts.speaker orelse "", effects_csv, resolved.text });
+    // schedule is always explicit on the wire (enqueue unless -I/--interrupt)
+    const schedule: []const u8 = if (opts.interrupt) "interrupt" else "enqueue";
+    try writer.interface.print("{s}\t{s}\t{s}\t{s}\t{s}\n", .{ resolved.preset_name, opts.speaker orelse "", effects_csv, schedule, resolved.text });
     try writer.interface.flush();
     timing.logf(stdout, init.io, "[Client] Request sent, waiting for response...\n", .{});
 

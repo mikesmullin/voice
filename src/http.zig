@@ -168,6 +168,21 @@ fn handleSpeak(daemon: *daemon_mod.Daemon, request: *std.http.Server.Request, io
         return;
     }
 
+    // mode=play schedules an utterance on the daemon's output, so the
+    // client must say what happens if speech is already playing —
+    // "schedule": "enqueue" (queue behind it) or "interrupt" (silence it
+    // first). Required, mirroring the unix-socket protocol (daemon.zig).
+    const schedule: []const u8 = if (obj.get("schedule")) |v| switch (v) {
+        .string => |s| s,
+        else => "",
+    } else "";
+    const interrupt = std.mem.eql(u8, schedule, "interrupt");
+    if (!interrupt and !std.mem.eql(u8, schedule, "enqueue")) {
+        try request.respond("{\"error\":\"schedule is required for mode=play: \\\"enqueue\\\" or \\\"interrupt\\\"\"}\n", .{ .status = .bad_request });
+        return;
+    }
+    if (interrupt) daemon.output.stopSpeech();
+
     const t0 = timing.elapsedSeconds(io);
     const n = daemon.synthesizeAndPlay(preset, text, true, log, speaker, effect_names.items) catch |err| {
         if (err == error.UnknownSpeaker) {

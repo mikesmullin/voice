@@ -136,6 +136,14 @@ pub const Output = struct {
         }
     }
 
+    /// INTERRUPT primitive: immediately stops whatever speech is playing
+    /// or queued (the speech channel only — deliberate backgrounds on
+    /// other channels are unaffected).
+    pub fn stopSpeech(self: *Output) void {
+        _ = self;
+        g_world.clearChannel(SPEECH_CHANNEL);
+    }
+
     /// Waits until everything enqueued so far has finished playing.
     pub fn drain(self: *Output, io: std.Io) void {
         _ = self;
