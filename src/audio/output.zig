@@ -39,6 +39,16 @@ const effects_mod = @import("effects.zig");
 /// voices at other rates ever actually get resampled by `play()`.
 const MIX_RATE: u32 = 24000;
 
+/// All speech goes through this one channel. Channels are strict FIFOs
+/// (world.zig), so consecutive speak requests play back-to-back in order
+/// instead of being summed together — two requests in flight used to play
+/// *simultaneously* (each grabbed its own idle channel), which is how
+/// Ada's per-sentence speak calls ended up overlapping in the user's ears.
+/// Backgrounds still enqueue on their own channel for deliberate
+/// concurrency; `firstIdleLocked` skips busy channels, so they never land
+/// here while speech is queued.
+const SPEECH_CHANNEL: usize = 0;
+
 var g_world: world_mod.World = undefined;
 var g_setup_done: bool = false;
 
@@ -73,12 +83,13 @@ pub const Output = struct {
     }
 
     /// Resamples `samples` (at `rate`) to the World's fixed mix rate and
-    /// enqueues it as an Entity on the first idle channel. Returns once
-    /// enqueued - playback itself happens asynchronously (see `drain`).
+    /// enqueues it on the speech channel (FIFO - queues behind any speech
+    /// already playing). Returns once enqueued - playback itself happens
+    /// asynchronously (see `drain`).
     pub fn play(self: *Output, samples: []const f32, rate: u32) !void {
         _ = self;
         const resampled = try resample(std.heap.c_allocator, samples, rate, g_world.mix_rate);
-        _ = try g_world.enqueue(null, .{ .samples = resampled });
+        _ = try g_world.enqueue(SPEECH_CHANNEL, .{ .samples = resampled });
     }
 
     /// Like `play`, but first enqueues each file in `stinger_paths` (in
@@ -98,7 +109,9 @@ pub const Output = struct {
     /// never stop once started).
     pub fn playChain(self: *Output, alloc: std.mem.Allocator, io: std.Io, samples: []const f32, rate: u32, stinger_paths: []const []const u8, background: ?effects_mod.BackgroundChoice) !void {
         _ = self;
-        var channel: ?usize = null;
+        // stingers + voice share the speech channel too: a stinger blocks
+        // its voice AND queues behind any speech already playing
+        var channel: ?usize = SPEECH_CHANNEL;
         var total_frames: usize = 0;
         for (stinger_paths) |path| {
             const wav_data = wav_mod.readMono(alloc, io, path) catch continue;
