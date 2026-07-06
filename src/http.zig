@@ -11,6 +11,7 @@
 const std = @import("std");
 const daemon_mod = @import("daemon.zig");
 const wav = @import("audio/wav.zig");
+const effects = @import("audio/effects.zig");
 const cli = @import("cli.zig");
 const paths = @import("paths.zig");
 const timing = @import("timing.zig");
@@ -134,14 +135,30 @@ fn handleSpeak(daemon: *daemon_mod.Daemon, request: *std.http.Server.Request, io
         .float => |f| @floatCast(f),
         else => 1.0,
     } else 1.0;
+    const speaker: ?[]const u8 = if (obj.get("speaker")) |v| switch (v) {
+        .string => |s| if (s.len == 0) null else s,
+        else => null,
+    } else null;
+    var effect_names: std.ArrayList([]const u8) = .empty;
+    if (obj.get("effects")) |v| switch (v) {
+        .array => |arr| for (arr.items) |item| if (item == .string) try effect_names.append(alloc, item.string),
+        else => {},
+    };
 
     if (std.mem.eql(u8, mode, "download")) {
         const t0 = timing.elapsedSeconds(io);
-        const result = daemon.synthesize(alloc, preset, text, log) catch |err| {
+        var result = daemon.synthesize(alloc, preset, text, log) catch |err| {
             timing.logf(log, io, "[HTTP] synth error: {t}\n", .{err});
             try request.respond("{\"error\":\"synthesis failed\"}\n", .{ .status = .internal_server_error });
             return;
         };
+        const resolved = effects.resolveEffects(alloc, &daemon.config, effect_names.items) catch {
+            try request.respond("{\"error\":\"unknown effect (see config.yaml's effects: block)\"}\n", .{ .status = .bad_request });
+            return;
+        };
+        if (resolved.chain.items.len > 0) {
+            result.samples = try effects.applyChain(alloc, result.samples, result.sample_rate, resolved.chain.items);
+        }
         cli.applyGain(result.samples, std.math.clamp(gain, 0.0, 2.0));
         const wav_bytes = try wav.encodeMono16(alloc, result.sample_rate, result.samples);
         timing.logf(log, io, "[HTTP] /speak {s} (download): {d} samples ({d:.2}s)\n", .{ voice_name, result.samples.len, timing.elapsedSeconds(io) - t0 });
@@ -152,7 +169,15 @@ fn handleSpeak(daemon: *daemon_mod.Daemon, request: *std.http.Server.Request, io
     }
 
     const t0 = timing.elapsedSeconds(io);
-    const n = daemon.synthesizeAndPlay(preset, text, true, log) catch |err| {
+    const n = daemon.synthesizeAndPlay(preset, text, true, log, speaker, effect_names.items) catch |err| {
+        if (err == error.UnknownSpeaker) {
+            try request.respond("{\"error\":\"unknown speaker (see 'voice speakers')\"}\n", .{ .status = .bad_request });
+            return;
+        }
+        if (err == error.UnknownEffect) {
+            try request.respond("{\"error\":\"unknown effect (see config.yaml's effects: block)\"}\n", .{ .status = .bad_request });
+            return;
+        }
         timing.logf(log, io, "[HTTP] synth error: {t}\n", .{err});
         try request.respond("{\"error\":\"synthesis failed\"}\n", .{ .status = .internal_server_error });
         return;

@@ -11,6 +11,9 @@ const ort = @import("engines/onnxruntime.zig");
 const wav = @import("audio/wav.zig");
 const config_mod = @import("config.zig");
 const audio_output = @import("audio/output.zig");
+const linux_sink = @import("audio/linux_sink.zig");
+const sinks_mod = @import("audio/sinks.zig");
+const effects_mod = @import("audio/effects.zig");
 const daemon_mod = @import("daemon.zig");
 const http_mod = @import("http.zig");
 const cli = @import("cli.zig");
@@ -97,6 +100,23 @@ pub fn main(init: std.process.Init) !void {
             }
             try stdout.print("  {s}: engine={s} voice={s} speed={d}\n", .{ kv.key_ptr.*, kv.value_ptr.engine, kv.value_ptr.voice, kv.value_ptr.speed });
         }
+        try stdout.print("speakers ({d}):\n", .{cfg.speakers.count()});
+        var speaker_it = cfg.speakers.iterator();
+        while (speaker_it.next()) |kv| try stdout.print("  {s}: {s}\n", .{ kv.key_ptr.*, kv.value_ptr.* });
+        try stdout.print("effects ({d}):\n", .{cfg.effects.count()});
+        var effects_it = cfg.effects.iterator();
+        while (effects_it.next()) |kv| {
+            try stdout.print("  {s}: chain ({d} steps)\n", .{ kv.key_ptr.*, kv.value_ptr.chain.items.len });
+            for (kv.value_ptr.chain.items) |step| {
+                try stdout.print("    - {s}:\n", .{step.kind});
+                var param_it = step.params.iterator();
+                while (param_it.next()) |p| try stdout.print("        {s}: {s}\n", .{ p.key_ptr.*, p.value_ptr.* });
+            }
+            if (kv.value_ptr.background.sources.items.len > 0) {
+                try stdout.print("    background: volume={d}\n", .{kv.value_ptr.background.volume});
+                for (kv.value_ptr.background.sources.items) |src| try stdout.print("      - {s}\n", .{src});
+            }
+        }
         try stdout.flush();
         return;
     }
@@ -146,8 +166,8 @@ pub fn main(init: std.process.Init) !void {
         try stdout.print("[Kokoro] synthesized {d} samples\n", .{samples.len});
 
         try out.play(samples, 24000);
-        out.drain(24000);
-        try stdout.print("[Audio] played through persistent PulseAudio stream\n", .{});
+        out.drain(init.io);
+        try stdout.print("[Audio] played through the Audio World (sokol_audio)\n", .{});
         try stdout.flush();
         return;
     }
@@ -182,6 +202,32 @@ pub fn main(init: std.process.Init) !void {
         var it = cfg.voices.iterator();
         while (it.next()) |kv| {
             try stdout.print("{s: <12} {s: <8} {s}\n", .{ kv.key_ptr.*, kv.value_ptr.engine, kv.value_ptr.voice });
+        }
+        try stdout.flush();
+        return;
+    }
+
+    // "speakers" is its own subcommand too, per tmp/FUN_PLAN.md section 1 -
+    // lists PulseAudio/PipeWire sinks (via `pactl`, Linux only) alongside
+    // any configured alias, so users can discover raw sink names to put in
+    // config.yaml's `speakers:` block.
+    if (args.len > 1 and std.mem.eql(u8, args[1], "speakers")) {
+        const opts = try cli.parseOptions(arena, args[2..]);
+        const cfg = try config_mod.Config.load(arena, init.io, opts.config_path);
+        const sinks = sinks_mod.listSinks(arena, init.io) catch |err| {
+            try stdout.print("error: failed to list sinks via `pactl` ({t})\n       Install `pipewire-pulse`/`pulseaudio-utils` if `pactl` isn't available.\n       (Speaker selection is Linux-only.)\n", .{err});
+            try stdout.flush();
+            std.process.exit(1);
+        };
+
+        var alias_by_sink = std.StringHashMap([]const u8).init(arena);
+        var speaker_it = cfg.speakers.iterator();
+        while (speaker_it.next()) |kv| try alias_by_sink.put(kv.value_ptr.*, kv.key_ptr.*);
+
+        try stdout.print("{s: <12} {s: <50} {s}\n", .{ "ALIAS", "SINK NAME", "DESCRIPTION" });
+        for (sinks) |sink| {
+            const alias = alias_by_sink.get(sink.name) orelse "(none)";
+            try stdout.print("{s: <12} {s: <50} {s}\n", .{ alias, sink.name, sink.description });
         }
         try stdout.flush();
         return;
@@ -228,8 +274,18 @@ pub fn main(init: std.process.Init) !void {
         timing.logf(stdout, init.io, "[Voice] Loading '{s}' ({s}) standalone...\n", .{ resolved.preset_name, preset.engine });
         var d = try daemon_mod.Daemon.init(arena, init.io, cfg);
         d.force_cpu = opts.cpu;
-        const result = try d.synthesize(arena, preset, resolved.text, stdout);
+        var result = try d.synthesize(arena, preset, resolved.text, stdout);
         cli.applyGain(result.samples, opts.gain);
+
+        const resolved_fx = effects_mod.resolveEffects(arena, &cfg, opts.effects.items) catch {
+            try stdout.print("error: unknown effect (see config.yaml's effects: block)\n", .{});
+            try stdout.flush();
+            std.process.exit(1);
+        };
+        if (resolved_fx.chain.items.len > 0) {
+            result.samples = try effects_mod.applyChain(arena, result.samples, result.sample_rate, resolved_fx.chain.items);
+        }
+
         timing.logf(stdout, init.io, "[Voice] Synthesized {d} samples ({d:.2}s audio)\n", .{
             result.samples.len,
             @as(f64, @floatFromInt(result.samples.len)) / @as(f64, @floatFromInt(result.sample_rate)),
@@ -238,10 +294,26 @@ pub fn main(init: std.process.Init) !void {
         if (opts.output) |out_path| {
             try wav.writeMono16(init.io, out_path, result.sample_rate, result.samples);
             timing.logf(stdout, init.io, "[Voice] Saved to: {s}\n", .{out_path});
+        } else if (opts.speaker) |alias| {
+            const sink_name = cfg.getSpeakerSink(alias) orelse {
+                try stdout.print("error: no such speaker alias '{s}' (see 'voice speakers')\n", .{alias});
+                try stdout.flush();
+                std.process.exit(1);
+            };
+            linux_sink.playToSink(arena, result.samples, result.sample_rate, sink_name) catch |err| {
+                try stdout.print("error: failed to play to speaker '{s}': {t}\n", .{ alias, err });
+                try stdout.flush();
+                std.process.exit(1);
+            };
+            timing.logf(stdout, init.io, "[Voice] Playback complete (speaker: {s})\n", .{alias});
         } else {
             var out = audio_output.Output.init(arena);
-            try out.play(result.samples, result.sample_rate);
-            out.drain(result.sample_rate);
+            if (resolved_fx.stinger_files.items.len > 0 or resolved_fx.background != null) {
+                try out.playChain(arena, init.io, result.samples, result.sample_rate, resolved_fx.stinger_files.items, resolved_fx.background);
+            } else {
+                try out.play(result.samples, result.sample_rate);
+            }
+            out.drain(init.io);
             timing.logf(stdout, init.io, "[Voice] Playback complete\n", .{});
         }
         return;
@@ -268,7 +340,8 @@ pub fn main(init: std.process.Init) !void {
 
     var write_buf: [4096]u8 = undefined;
     var writer = conn.writer(init.io, &write_buf);
-    try writer.interface.print("{s}\t{s}\n", .{ resolved.preset_name, resolved.text });
+    const effects_csv = try std.mem.join(arena, ",", opts.effects.items);
+    try writer.interface.print("{s}\t{s}\t{s}\t{s}\n", .{ resolved.preset_name, opts.speaker orelse "", effects_csv, resolved.text });
     try writer.interface.flush();
     timing.logf(stdout, init.io, "[Client] Request sent, waiting for response...\n", .{});
 

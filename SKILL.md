@@ -132,11 +132,24 @@ Alpine.js + Tailwind demo page - open `http://127.0.0.1:3124/` once
   `fetch-models.sh` (or ones deliberately skipped via `--preload-only`)
   need their `.onnx`/`.onnx.json` fetched into `models/piper/` by hand.
 - **`-o`/`-g` only work with `local`**, not `client`/bare requests - the
-  unix socket protocol is a simple `preset\ttext\n` line, with no room for
-  extra options yet. HTTP's `POST /speak` DOES support `gain` and
-  `mode=download` (a different, JSON-based protocol).
-- **`-s/--stinger`** is parsed but does nothing yet - no stinger config
-  schema exists.
+  unix socket protocol is a `preset\tspeaker\teffects\ttext\n` line (empty
+  `speaker`/`effects` fields for "default sink"/"no effects"), with no
+  room for `-o`/`-g` yet. HTTP's `POST /speak` DOES support `gain` and
+  `mode=download` (a different, JSON-based protocol), plus `speaker`/
+  `effects` fields matching the unix-socket protocol's semantics.
+- **`-s/--stinger`** (the standalone flag) is still parsed but unwired -
+  stinger playback is only reachable today via an effect preset's
+  `chain:` (a `stinger:` step with a `file:` param), applied with
+  `-e/--effect <preset_name>` - see `tmp/FUN_PLAN.md` section 2 and
+  `config.yaml`'s `effects:` block for an example (`radio_comms`).
+- **`-d/--speaker`/`-e/--effect`** work for `local`, `client`, and HTTP.
+  Speaker selection is Linux-only (`src/audio/linux_sink.zig`, a direct
+  `pa_simple` connection - sokol_audio has no device-selection API on any
+  platform); combining an explicit speaker with an effect chain that has
+  a `stinger` step plays the voice audio through that speaker but skips
+  the stinger pre-roll (stingers need the World's channel queue, which
+  the speaker-specific path bypasses) - a known, documented gap, not a
+  silent one.
 - **Single-threaded unix socket loop** - one request at a time, no
   concurrent connections.
 - **No NFD Unicode normalization** in Piper's phoneme splitting (Zig's

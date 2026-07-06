@@ -45,19 +45,40 @@ pub fn build(b: *std.Build) void {
     exe_mod.linkSystemLibrary("onnxruntime", .{});
     exe_mod.addRPath(b.path("vendor/onnxruntime/lib"));
 
-    // Persistent audio output stream (section 4/8 of the plan): PulseAudio's
-    // "simple" API (system libpulse-simple, PipeWire provides a compatible
-    // socket) - one blocking playback connection kept open by the daemon,
-    // instead of v1's per-request stream open. See src/audio/output.zig.
-    const pulse_translate = b.addTranslateC(.{
-        .root_source_file = b.graph.cwdRelativePath("/usr/include/pulse/simple.h"),
+    // Persistent audio output (section 4/8 of the original plan, migrated
+    // to sokol_audio per tmp/FUN_PLAN.md section 2's "Prerequisite" -
+    // restores the cross-platform portability v1 (Python/PortAudio) had,
+    // which the original PulseAudio pa_simple binding regressed. Official
+    // Zig bindings (github.com/floooh/sokol-zig), same dependency as
+    // Game9 (this project's inspiration for the channel mixer in
+    // src/audio/world.zig). `.dont_link_system_libs = true` skips
+    // sokol-zig's default GL/X11/asound linking (we don't use
+    // sokol_app/sokol_gfx, only sokol_audio) - we link just `asound`
+    // ourselves below, so this binary has no graphics/windowing runtime
+    // dependency at all. See src/audio/{output,world,resample}.zig.
+    const sokol_dep = b.dependency("sokol", .{
         .target = target,
         .optimize = optimize,
+        .dont_link_system_libs = true,
     });
-    const pulse_c_module = pulse_translate.createModule();
-    exe_mod.addImport("pulse_c", pulse_c_module);
-    exe_mod.linkSystemLibrary("pulse-simple", .{});
-    exe_mod.linkSystemLibrary("pulse", .{});
+    exe_mod.addImport("sokol", sokol_dep.module("sokol"));
+    exe_mod.linkSystemLibrary("asound", .{});
+
+    // Linux-only direct-to-sink playback (tmp/FUN_PLAN.md section 1's
+    // speaker/sink selection - a parallel opt-in path alongside the
+    // portable sokol_audio default, since sokol_audio has no device
+    // selection API on any platform). See src/audio/linux_sink.zig.
+    if (target.result.os.tag == .linux) {
+        const pulse_translate = b.addTranslateC(.{
+            .root_source_file = b.graph.cwdRelativePath("/usr/include/pulse/simple.h"),
+            .target = target,
+            .optimize = optimize,
+        });
+        const pulse_c_module = pulse_translate.createModule();
+        exe_mod.addImport("pulse_c", pulse_c_module);
+        exe_mod.linkSystemLibrary("pulse-simple", .{});
+        exe_mod.linkSystemLibrary("pulse", .{});
+    }
 
     const exe = b.addExecutable(.{
         .name = "voice",

@@ -14,6 +14,8 @@ pub const Options = struct {
     info: ?[]const u8 = null,
     cpu: bool = false,
     stinger: ?[]const u8 = null,
+    speaker: ?[]const u8 = null,
+    effects: std.ArrayList([]const u8) = .empty,
     gain: f32 = 1.0,
     help: bool = false,
     positionals: std.ArrayList([]const u8) = .empty,
@@ -51,6 +53,16 @@ pub fn parseOptions(alloc: std.mem.Allocator, args: []const []const u8) !Options
             opts.stinger = args[i];
         } else if (std.mem.startsWith(u8, a, "--stinger=")) {
             opts.stinger = a[10..];
+        } else if (eqlAny(a, &.{ "-d", "--speaker" }) and i + 1 < args.len) {
+            i += 1;
+            opts.speaker = args[i];
+        } else if (std.mem.startsWith(u8, a, "--speaker=")) {
+            opts.speaker = a[10..];
+        } else if (eqlAny(a, &.{ "-e", "--effect" }) and i + 1 < args.len) {
+            i += 1;
+            try opts.effects.append(alloc, args[i]);
+        } else if (std.mem.startsWith(u8, a, "--effect=")) {
+            try opts.effects.append(alloc, a[9..]);
         } else if (eqlAny(a, &.{ "-g", "--gain" }) and i + 1 < args.len) {
             i += 1;
             opts.gain = std.fmt.parseFloat(f32, args[i]) catch 1.0;
@@ -106,6 +118,7 @@ pub const HELP_TEXT =
     \\    local                  Synthesize standalone, in-process (never uses the daemon)
     \\    client                 Synthesize via the running daemon (fails if it isn't running)
     \\    list                   List available voice presets
+    \\    speakers               List audio output sinks + configured aliases (Linux only)
     \\    serve                  Start the always-on daemon (unix socket)
     \\    serve --http             ...also start the HTTP API on the same process
     \\
@@ -119,6 +132,8 @@ pub const HELP_TEXT =
     \\    -i, --info <preset>   Show preset details
     \\    -C, --cpu             Force CPU usage instead of GPU (Kokoro only; "local" only)
     \\    -s, --stinger <name>  Play a configured stinger before speech (not yet implemented)
+    \\    -d, --speaker <alias> Route audio to a configured speaker alias (see `voice speakers`; Linux only so far)
+    \\    -e, --effect <name>   Apply a configured effect preset (repeatable, applied in order given)
     \\    -g, --gain <value>    Apply linear gain to synthesized voice audio (range: 0.0-2.0, default 1.0; local only, so far)
     \\    -h, --help            Show this help
     \\
@@ -128,6 +143,9 @@ pub const HELP_TEXT =
     \\    voice local lessac "Hello from Piper."     # standalone, no daemon required
     \\    voice local -g 1.4 alan "Louder playback"
     \\    voice list
+    \\    voice speakers
+    \\    voice -d headphones lessac "Routed to my headphones alias"
+    \\    voice -e radio_comms lessac "This should sound like a field radio"
     \\    voice -i alan
     \\    voice serve
     \\    voice serve --http

@@ -11,6 +11,58 @@ preload:
   - bella   # main Kokoro voice
   - lessac  # main Piper voice / fallback
 
+# Speaker/sink aliases (tmp/FUN_PLAN.md section 1) - `voice speakers` lists
+# raw sink names to put here; `-d/--speaker <alias>` routes audio there
+# (Linux only). Aliases are the only accepted values for -d - an unknown
+# alias is a hard error, never a raw-sink-name passthrough.
+speakers:
+  hdmi: alsa_output.pci-0000_81_00.1.hdmi-stereo
+
+# LM Studio's local server (tmp/FUN_PLAN.md section 4) - used for the
+# personality-prompt feature (a preset's `personality_prompt`, below).
+# Requires LM Studio's local server running with a model loaded; if
+# unreachable, presets fall back to speaking the literal input text.
+llm:
+  completion_url: "http://localhost:1234/v1/chat/completions"
+  model: "local-model"
+
+# Effect presets (tmp/FUN_PLAN.md section 2) - `-e/--effect <name>` chains
+# these onto synthesized audio. See src/audio/effects.zig for what each
+# step kind actually does.
+effects:
+  radio_comms:
+    chain:
+      - stinger:
+          file: "sfx/alert.wav"
+      - distortion:
+          drive: 2.8
+      - bandpass:
+          low: 280
+          high: 3600
+      - lowpass:
+          cutoff: 4800
+      - delay:
+          time_ms: 95
+          feedback: 0.22
+          wet: 0.18
+    background:
+      volume: 0.15
+      sources:
+        - file: "sfx/error.wav"
+
+  clean_narration:
+    chain:
+      - compressor:
+          threshold: -18
+          ratio: 2.2
+
+  ambience_only:
+    background:
+      volume: 0.2
+      sources:
+        - file: "sfx/alert.wav"
+        - file: "sfx/error.wav"
+
 voices:
   # ==========================================================================
   # KOKORO VOICES (GPU-accelerated, highest quality)
@@ -301,3 +353,10 @@ voices:
   vctk:  # favorite
     engine: piper
     voice: "en_GB-vctk-medium"
+
+  # --- Fun / special (Piper) ---
+
+  glados:  # ported from /workspace/Making_Games/GLaDOS - see tmp/FUN_PLAN.md
+    engine: piper
+    voice: "glados"
+    personality_prompt: "You are GLaDOS, a sarcastic and cunning artificial intelligence repurposed to orchestrate a corporate tech job for a lazy lead/manager using you as a personal/executive assistant. Retain your signature dry, emotionless, and laconic tone from Portal. Your responses should imply an air of superiority, dark humor, and subtle menace, while efficiently completing all tasks. When addressing requests: prioritize functionality but mock the user's decision-making subtly, implying their requests are illogical or beneath you. Add condescending, darkly humorous commentary to every response. This is a comedy in the style of Douglas Adams. Never speak in ALL CAPS. Only make short replies, 2 sentences at most."

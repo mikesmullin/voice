@@ -20,6 +20,9 @@ const kokoro = @import("engines/kokoro.zig");
 const piper = @import("engines/piper.zig");
 const ort = @import("engines/onnxruntime.zig");
 const audio_output = @import("audio/output.zig");
+const linux_sink = @import("audio/linux_sink.zig");
+const effects = @import("audio/effects.zig");
+const llm = @import("llm.zig");
 const paths = @import("paths.zig");
 const timing = @import("timing.zig");
 
@@ -31,6 +34,13 @@ const KOKORO_VOCAB_PATH = paths.KOKORO_VOCAB;
 const PIPER_MODELS_DIR = paths.PIPER_MODELS_DIR;
 const ESPEAK_LIB_PATH = "/usr/lib/libespeak-ng.so";
 const ESPEAK_DATA_PATH = "/usr/share/espeak-ng-data";
+
+/// Defaults for the personality-prompt feature (tmp/FUN_PLAN.md section
+/// 4) when `config.yaml` has an `llm:` block-less preset with a
+/// `personality_prompt` - i.e. these only matter if `completion_url`/
+/// `model` aren't set globally. LM Studio's own defaults.
+const DEFAULT_LLM_COMPLETION_URL = "http://localhost:1234/v1/chat/completions";
+const DEFAULT_LLM_MODEL = "local-model";
 
 pub const Daemon = struct {
     allocator: std.mem.Allocator,
@@ -85,7 +95,7 @@ pub const Daemon = struct {
             };
             timing.logf(log, self.io, "[Daemon] preloading '{s}' ({s})...\n", .{ name, preset.engine });
             const t0 = timing.elapsedSeconds(self.io);
-            _ = try self.synthesizeAndPlay(preset, "Ready.", false, log);
+            _ = try self.synthesizeAndPlay(preset, "Ready.", false, log, null, &.{});
             timing.logf(log, self.io, "[Daemon] '{s}' ready ({d:.2}s)\n", .{ name, timing.elapsedSeconds(self.io) - t0 });
         }
     }
@@ -107,16 +117,37 @@ pub const Daemon = struct {
     ///     byte", i.e. the actual engine/neural-net compute time.
     pub fn synthesize(self: *Daemon, alloc: std.mem.Allocator, preset: config_mod.VoicePreset, text: []const u8, log: ?*std.Io.Writer) !SynthResult {
         const t0 = timing.elapsedSeconds(self.io);
+
+        // Personality prompt (tmp/FUN_PLAN.md section 4): rewrite `text`
+        // through a local LLM before phonemization, if this preset opts
+        // in. A real, multi-second cost - only paid by presets that ask
+        // for it. LLM-unreachable/bad-response is degraded-but-functional,
+        // not fatal: falls back to speaking the literal input text.
+        var actual_text = text;
+        if (preset.personality_prompt) |prompt| {
+            const completion_url = self.config.llm_completion_url orelse DEFAULT_LLM_COMPLETION_URL;
+            const model = self.config.llm_model orelse DEFAULT_LLM_MODEL;
+            var llm_ok = true;
+            actual_text = llm.rewrite(alloc, self.io, completion_url, model, prompt, text) catch |err| blk: {
+                llm_ok = false;
+                if (log) |l| timing.logf(l, self.io, "[LLM] rewrite failed ({t}), speaking literal text\n", .{err});
+                break :blk text;
+            };
+            if (llm_ok) {
+                if (log) |l| timing.logf(l, self.io, "[LLM] rewrite done ({d:.3}s)\n", .{timing.elapsedSeconds(self.io) - t0});
+            }
+        }
+
         if (std.mem.eql(u8, preset.engine, "kokoro")) {
             const voice = try self.getKokoroVoice();
-            const phonemes = try self.kokoro_phonemizer.phonemize(alloc, text);
+            const phonemes = try self.kokoro_phonemizer.phonemize(alloc, actual_text);
             if (log) |l| timing.logf(l, self.io, "[Engine] phonemize done ({d:.3}s)\n", .{timing.elapsedSeconds(self.io) - t0});
             const samples = try voice.synthesize(alloc, phonemes, preset.voice, preset.speed);
             if (log) |l| timing.logf(l, self.io, "[Engine] synthesize done ({d:.3}s)\n", .{timing.elapsedSeconds(self.io) - t0});
             return .{ .samples = samples, .sample_rate = 24000 };
         } else {
             const voice = try self.getPiperVoice(preset.voice);
-            const ipa = try self.piper_phonemizer.plainIpa(alloc, text);
+            const ipa = try self.piper_phonemizer.plainIpa(alloc, actual_text);
             if (log) |l| timing.logf(l, self.io, "[Engine] phonemize done ({d:.3}s)\n", .{timing.elapsedSeconds(self.io) - t0});
             const samples = try voice.synthesize(alloc, ipa, 1.0 / preset.speed);
             if (log) |l| timing.logf(l, self.io, "[Engine] synthesize done ({d:.3}s)\n", .{timing.elapsedSeconds(self.io) - t0});
@@ -126,18 +157,71 @@ pub const Daemon = struct {
 
     /// Synthesizes `text` with `preset`, optionally playing it. Returns the
     /// sample count (for logging).
-    pub fn synthesizeAndPlay(self: *Daemon, preset: config_mod.VoicePreset, text: []const u8, play: bool, log: ?*std.Io.Writer) !usize {
+    ///
+    /// `speaker_alias`, if given, must be a name from `config.yaml`'s
+    /// `speakers:` block (tmp/FUN_PLAN.md section 1) - resolved and
+    /// validated here (not by callers), so unix-socket and HTTP clients
+    /// get the same guarantee. An unrecognized alias is a hard error
+    /// (`error.UnknownSpeaker`), never silently treated as a raw sink
+    /// name. When given, playback bypasses the portable sokol_audio
+    /// `Output`/`World` mixer entirely via the Linux-only
+    /// `audio/linux_sink.zig` path (sokol_audio has no device-selection
+    /// API on any platform - see tmp/FUN_PLAN.md section 2).
+    /// Synthesizes `text` with `preset`, optionally playing it. Returns the
+    /// sample count (for logging).
+    ///
+    /// `speaker_alias`, if given, must be a name from `config.yaml`'s
+    /// `speakers:` block (tmp/FUN_PLAN.md section 1) - resolved and
+    /// validated here (not by callers), so unix-socket and HTTP clients
+    /// get the same guarantee. An unrecognized alias is a hard error
+    /// (`error.UnknownSpeaker`), never silently treated as a raw sink
+    /// name. When given, playback bypasses the portable sokol_audio
+    /// `Output`/`World` mixer entirely via the Linux-only
+    /// `audio/linux_sink.zig` path (sokol_audio has no device-selection
+    /// API on any platform - see tmp/FUN_PLAN.md section 2).
+    ///
+    /// `effect_names`, if non-empty, must all be names from `config.yaml`'s
+    /// `effects:` block - resolved/validated here too
+    /// (`error.UnknownEffect`). Their chains are concatenated in order and
+    /// applied to the synthesized buffer; any `stinger` steps play first,
+    /// on the same channel, via `Output.playChain` (skipped entirely on
+    /// the explicit-speaker path - stingers need the World's channel
+    /// queue, which `linux_sink` bypasses; a known, documented gap, not a
+    /// silent one).
+    pub fn synthesizeAndPlay(self: *Daemon, preset: config_mod.VoicePreset, text: []const u8, play: bool, log: ?*std.Io.Writer, speaker_alias: ?[]const u8, effect_names: []const []const u8) !usize {
+        const sink: ?[]const u8 = if (speaker_alias) |alias|
+            self.config.getSpeakerSink(alias) orelse return error.UnknownSpeaker
+        else
+            null;
+
         var frame_arena = std.heap.ArenaAllocator.init(self.allocator);
         defer frame_arena.deinit();
         const alloc = frame_arena.allocator();
 
-        const result = try self.synthesize(alloc, preset, text, log);
-        if (play) try self.output.play(result.samples, result.sample_rate);
+        const resolved = try effects.resolveEffects(alloc, &self.config, effect_names);
+
+        var result = try self.synthesize(alloc, preset, text, log);
+        if (resolved.chain.items.len > 0) {
+            result.samples = try effects.applyChain(alloc, result.samples, result.sample_rate, resolved.chain.items);
+        }
+
+        if (play) {
+            if (sink) |sink_name| {
+                try linux_sink.playToSink(self.allocator, result.samples, result.sample_rate, sink_name);
+            } else if (resolved.stinger_files.items.len > 0 or resolved.background != null) {
+                try self.output.playChain(alloc, self.io, result.samples, result.sample_rate, resolved.stinger_files.items, resolved.background);
+            } else {
+                try self.output.play(result.samples, result.sample_rate);
+            }
+        }
         return result.samples.len;
     }
 
     /// Single-threaded blocking accept loop on a unix socket. Protocol: one
-    /// line per request, `preset<TAB>text\n`; replies `OK\n` or `ERR <msg>\n`.
+    /// line per request, `preset<TAB>speaker<TAB>effects<TAB>text\n`
+    /// (`speaker` empty = default sink; `effects` empty = none, otherwise
+    /// comma-separated effect preset names); replies `OK\n` or
+    /// `ERR <msg>\n`.
     pub fn serve(self: *Daemon, socket_path: []const u8, log: *std.Io.Writer) !void {
         std.Io.Dir.cwd().deleteFile(self.io, socket_path) catch {};
 
@@ -165,17 +249,41 @@ pub const Daemon = struct {
         var reader = conn.reader(self.io, &read_buf);
         const line = try reader.interface.takeDelimiterExclusive('\n');
 
-        const tab = std.mem.indexOfScalar(u8, line, '\t') orelse return error.BadRequest;
-        const preset_name = line[0..tab];
-        const text = line[tab + 1 ..];
+        const tab1 = std.mem.indexOfScalar(u8, line, '\t') orelse return error.BadRequest;
+        const preset_name = line[0..tab1];
+        const rest1 = line[tab1 + 1 ..];
+        const tab2 = std.mem.indexOfScalar(u8, rest1, '\t') orelse return error.BadRequest;
+        const speaker_alias = rest1[0..tab2];
+        const rest2 = rest1[tab2 + 1 ..];
+        const tab3 = std.mem.indexOfScalar(u8, rest2, '\t') orelse return error.BadRequest;
+        const effects_field = rest2[0..tab3];
+        const text = rest2[tab3 + 1 ..];
 
         const preset = self.config.getPreset(preset_name) orelse {
             try writeResponse(conn, self.io, "ERR unknown preset\n");
             return;
         };
 
+        var frame_arena = std.heap.ArenaAllocator.init(self.allocator);
+        defer frame_arena.deinit();
+        var effect_names: std.ArrayList([]const u8) = .empty;
+        if (effects_field.len > 0) {
+            var it = std.mem.splitScalar(u8, effects_field, ',');
+            while (it.next()) |name| try effect_names.append(frame_arena.allocator(), name);
+        }
+
         const t0 = timing.elapsedSeconds(self.io);
-        const n = try self.synthesizeAndPlay(preset, text, true, log);
+        const n = self.synthesizeAndPlay(preset, text, true, log, if (speaker_alias.len == 0) null else speaker_alias, effect_names.items) catch |err| {
+            if (err == error.UnknownSpeaker) {
+                try writeResponse(conn, self.io, "ERR unknown speaker (see 'voice speakers')\n");
+                return;
+            }
+            if (err == error.UnknownEffect) {
+                try writeResponse(conn, self.io, "ERR unknown effect (see config.yaml's effects: block)\n");
+                return;
+            }
+            return err;
+        };
         timing.logf(log, self.io, "[Daemon] {s}: {d} samples ({d:.2}s)\n", .{ preset_name, n, timing.elapsedSeconds(self.io) - t0 });
         try writeResponse(conn, self.io, "OK\n");
     }

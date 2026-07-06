@@ -1,6 +1,7 @@
 # Zig
 .zig-cache/
 zig-out/
+zig-pkg/
 
 # Vendored native libs (fetched by a setup step, not committed).
 # vendor/zig-phonemes is a git submodule (tracked), not covered by this.
