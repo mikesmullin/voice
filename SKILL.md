@@ -2,7 +2,7 @@
 
 Fast operator manual for using the `voice` CLI (v2, Zig + ONNX Runtime).
 The always-on daemon runs as the `presence-voice` systemd service (see
-`voice.service`); `voice` is the CLI binary and the name of the package
+`presence-voice.service`); `voice` is the CLI binary and the name of the package
 as a whole. Successor to v1's `SKILLS.md` (kept on the `v1` branch). See
 `README.md` for the v1/v2 comparison and `tmp/PHASE3_PLAN.md` for the
 full design rationale.
@@ -17,7 +17,7 @@ intentionally not finished yet.
 ## Default Operating Guidance
 
 - The daemon (`voice serve`) is meant to be always-on (e.g. via
-  `voice.service`) - prefer the bare shorthand or `client` over `local`
+  `presence-voice.service`) - prefer the bare shorthand or `client` over `local`
   once it's running, since `local` pays full model-load cost every call.
 - Kokoro runs on GPU (CUDA execution provider) when available, falling
   back to CPU automatically - you'll see which one was used logged at
@@ -97,7 +97,7 @@ voice serve --http         # ...also start the HTTP API (127.0.0.1:3124)
 Preloads every preset in `config.yaml`'s `preload:` list at startup (same
 mechanism validated in Phase 2 - one Kokoro preload warms *all* Kokoro
 presets; each Piper preset needs its own preload entry). See
-`voice.service` for the systemd --user unit.
+`presence-voice.service` for the systemd --user unit.
 
 ### HTTP API (with `serve --http`)
 

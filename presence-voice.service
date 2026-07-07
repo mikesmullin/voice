@@ -6,18 +6,18 @@
 #      minimum_zig_version and README.md)
 #   2. Install it somewhere on PATH, e.g.:
 #      mkdir -p ~/.local/bin && cp zig-out/bin/voice ~/.local/bin/voice
-#   3. Copy this file to ~/.config/systemd/user/voice.service
+#   3. Copy this file to ~/.config/systemd/user/presence-voice.service
 #      (edit ExecStart/WorkingDirectory if your paths differ - the daemon
 #      currently expects to be run from the repo root, since config.yaml,
 #      web/index.html, and tmp/zig-phenomes/data are read via relative
 #      paths - see the "Known gaps" note in src/daemon.zig)
 #   4. Enable and start:
 #      systemctl --user daemon-reload
-#      systemctl --user enable voice
-#      systemctl --user start voice
+#      systemctl --user enable presence-voice
+#      systemctl --user start presence-voice
 #
 # View logs:
-#   journalctl --user -u voice -f
+#   journalctl --user -u presence-voice -f
 #
 # Manual equivalent (identical behavior/timing, per tmp/PHASE3_PLAN.md
 # section 8 - systemd only changes where stdout goes and adds restart

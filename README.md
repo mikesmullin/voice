@@ -3,7 +3,7 @@
 Always-on local text-to-speech CLI + daemon (Piper + Kokoro), written in
 Zig + ONNX Runtime. CLI, unix socket, HTTP API, and a browser SPA all
 talk to the same running process (the `presence-voice` systemd service,
-see `voice.service`).
+see `presence-voice.service`).
 
 | Version | Branch | Notes |
 |---|---|---|
@@ -57,7 +57,7 @@ zig build
 ./zig-out/bin/voice local lessac "Hello from Piper."
 ```
 
-To run the daemon (recommended - see `voice.service` for systemd
+To run the daemon (recommended - see `presence-voice.service` for systemd
 --user):
 
 ```bash
@@ -80,6 +80,6 @@ protocol, stingers, hardcoded model paths).
 
 - `SKILL.md` - operator guide (commands, HTTP API, known gaps, toolchain notes)
 - `tmp/PHASE3_PLAN.md` - full design rationale and decisions log
-- `voice.service` - systemd --user unit
+- `presence-voice.service` - systemd --user unit
 
 - [Hugging Face](https://huggingface.co/)
