@@ -30,7 +30,11 @@ After=sound.target
 
 [Service]
 Type=simple
-WorkingDirectory=%h/workspace/voice
+# WorkingDirectory is hardcoded to this dev machine's checkout path since
+# it lives outside $HOME (%h wouldn't resolve it) - customize for your
+# own setup, or swap back to %h/workspace/voice if your checkout happens
+# to live under $HOME.
+WorkingDirectory=/workspace/voice
 ExecStart=%h/.local/bin/voice serve --http
 Restart=on-failure
 RestartSec=5
