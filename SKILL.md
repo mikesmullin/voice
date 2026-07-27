@@ -158,8 +158,11 @@ Alpine.js + Tailwind demo page - open `http://127.0.0.1:3124/` once
 - **G2P for Kokoro** uses Fable's `zig-phonemes` (evaluated as a misaki
   alternative, see `tmp/PHENOMES.md`) - a git submodule at
   `vendor/zig-phonemes` (run `git submodule update --init` after
-  cloning). Revisit once the comparison against plain espeak-ng is
-  finalized.
+  cloning). **espeak-ng is attached as OOV fallback** so proper names
+  are not silent; without it, missing lexicon entries produce empty
+  phoneme spans (gaps in speech). Custom overrides live in
+  `~/.config/voice/names.yaml` (created with header docs on first run;
+  restart `presence-voice` after edits). Debug: `voice --phonemize "…"`.
 
 ## Toolchain notes
 

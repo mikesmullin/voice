@@ -68,6 +68,16 @@ pub const Daemon = struct {
         };
     }
 
+    /// One-line summary of Kokoro G2P (espeak fallback + names.yaml) for startup logs.
+    pub fn logKokoroG2p(self: *const Daemon, log: *std.Io.Writer) void {
+        const p = self.kokoro_phonemizer;
+        timing.logf(log, self.io, "[Kokoro] G2P espeak={s} names={d} ({s})\n", .{
+            if (p.hasEspeak()) "on" else "off",
+            p.names_loaded,
+            p.names_path,
+        });
+    }
+
     fn getKokoroVoice(self: *Daemon) !*kokoro.Voice {
         if (self.kokoro_voice == null) {
             self.kokoro_voice = try kokoro.Voice.loadWithProvider(&self.rt, self.allocator, self.io, KOKORO_MODEL_PATH, KOKORO_VOCAB_PATH, KOKORO_VOICES_BIN_PATH, !self.force_cpu);
@@ -89,6 +99,7 @@ pub const Daemon = struct {
     /// Loads + warms every preset named in config.preload (one throwaway
     /// synthesis each), same mechanism validated in Phase 2.
     pub fn preload(self: *Daemon, log: *std.Io.Writer) !void {
+        self.logKokoroG2p(log);
         for (self.config.preload.items) |name| {
             const preset = self.config.getPreset(name) orelse {
                 timing.logf(log, self.io, "[Daemon] preload skipped: preset '{s}' not found in config\n", .{name});

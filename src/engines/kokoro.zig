@@ -10,28 +10,65 @@
 //!   - speed: float32 [1]
 //!   - output "audio": float32 1D waveform
 //!
-//! G2P is provided by Fable's zig-phonemes (vendor/zig-phonemes), evaluated
-//! as an alternative to plain espeak-ng. A git submodule (see
-//! .gitmodules) - run `git submodule update --init` after cloning this
-//! repo. Treat it as a read-only dependency (owned by its own repo) until
-//! the comparison in PHENOMES.md is settled.
+//! G2P is Fable's zig-phonemes (vendor/zig-phonemes): gold/silver lexicon,
+//! optional espeak-ng OOV fallback (required so proper names are not silent),
+//! plus optional ~/.config/voice/names.yaml overrides (src/names.zig).
 
 const std = @import("std");
 const zig_phonemes = @import("zig_phonemes");
 const ort = @import("onnxruntime.zig");
 const npz = @import("npz.zig");
+const names = @import("../names.zig");
 
 pub const G2P = zig_phonemes.G2P;
+pub const Espeak = zig_phonemes.Espeak;
+
+const ESPEAK_LIB_PATH = "/usr/lib/libespeak-ng.so";
+const ESPEAK_DATA_PATH = "/usr/share/espeak-ng-data";
 
 pub const Phonemizer = struct {
     g2p: G2P,
+    /// Heap-stable so `g2p.espeak` can point at it for the process lifetime.
+    espeak: ?*Espeak = null,
+    /// How many names.yaml entries were loaded (for logging).
+    names_loaded: usize = 0,
+    names_path: []const u8 = "",
 
     pub fn init(arena: std.mem.Allocator, io: std.Io, data_dir: []const u8, british: bool) !Phonemizer {
-        return .{ .g2p = try G2P.init(arena, io, data_dir, british) };
+        var g2p = try G2P.init(arena, io, data_dir, british);
+
+        // Custom pronunciations win over dictionary + espeak (load first).
+        const names_path = try names.defaultPath(arena);
+        names.ensureTemplate(io, names_path);
+        const n_names = names.applyToLexicon(arena, io, names_path, &g2p.lexicon) catch 0;
+
+        // espeak-ng OOV fallback — without this, unknown names phonemize to ""
+        // and Kokoro speaks a gap ("…") instead of the word.
+        var espeak_ptr: ?*Espeak = null;
+        if (Espeak.init(arena, ESPEAK_LIB_PATH, ESPEAK_DATA_PATH, british)) |es| {
+            const p = try arena.create(Espeak);
+            p.* = es;
+            g2p.espeak = p;
+            espeak_ptr = p;
+        } else |_| {
+            // Soft-fail: lexicon + names.yaml still work; OOV may stay silent.
+            espeak_ptr = null;
+        }
+
+        return .{
+            .g2p = g2p,
+            .espeak = espeak_ptr,
+            .names_loaded = n_names,
+            .names_path = names_path,
+        };
     }
 
     pub fn phonemize(self: *const Phonemizer, arena: std.mem.Allocator, text: []const u8) ![]const u8 {
         return self.g2p.convert(arena, text);
+    }
+
+    pub fn hasEspeak(self: *const Phonemizer) bool {
+        return self.espeak != null;
     }
 };
 
