@@ -71,11 +71,9 @@ pub const Daemon = struct {
     /// One-line summary of Kokoro G2P (espeak fallback + names.yaml) for startup logs.
     pub fn logKokoroG2p(self: *const Daemon, log: *std.Io.Writer) void {
         const p = self.kokoro_phonemizer;
-        timing.logf(log, self.io, "[Kokoro] G2P espeak={s} names={d} (ipa={d} say={d}) ({s})\n", .{
+        timing.logf(log, self.io, "[Kokoro] G2P espeak={s} names={d} ({s})\n", .{
             if (p.hasEspeak()) "on" else "off",
-            p.namesLoaded(),
-            p.names_ipa,
-            p.names_say,
+            p.names_loaded,
             p.names_path,
         });
     }

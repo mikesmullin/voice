@@ -1,14 +1,11 @@
 //! Custom word pronunciations for Kokoro G2P (`~/.config/voice/names.yaml`).
 //!
-//! Two value forms:
-//!   1. IPA string — injected into the gold lexicon (wins over espeak OOV).
-//!   2. `say:E Lisa` — orthographic rewrite *before* G2P (word → phrase).
-//!      Use this when a name should be spoken as separate known words
-//!      (e.g. Elisa → "E Lisa" so letter-E + name Lisa stay distinct).
+//! Entries are injected into the gold lexicon *before* espeak OOV fallback,
+//! so a listed IPA always wins over dictionary and espeak guesses.
 //!
 //! File format (purpose-built mini-YAML — same spirit as config.zig):
 //!   Word: "ipa"
-//!   Word: "say:E Lisa"
+//!   word: ipa
 //! Blank lines and `#` comments (full-line or trailing) are ignored.
 
 const std = @import("std");
@@ -38,40 +35,38 @@ pub const NAMES_YAML_TEMPLATE =
     \\# voice names.yaml — custom Kokoro pronunciations
     \\#
     \\# PURPOSE
-    \\#   Teach Ada how to say names/brands that the default G2P mangles.
-    \\#
-    \\# TWO VALUE FORMS
-    \\#   1) IPA (single token stays one word):
-    \\#        Smullin: "smˈʌlᵻn"
-    \\#   2) Orthographic rewrite (before G2P) — use when you want *two*
-    \\#      known words spoken clearly, e.g. letter-E + the name Lisa:
-    \\#        Elisa: "say:E Lisa"
-    \\#      That expands "Elisa" → "E Lisa" so you get ˈi + lˈisə, not a
-    \\#      collapsed "uh-lissa" monoword.
+    \\#   Map written words (usually proper names) to Kokoro IPA phoneme strings.
+    \\#   These override the built-in gold/silver dictionaries AND espeak-ng OOV
+    \\#   fallback, so you can teach Ada how to say family names, brands, etc.
     \\#
     \\# HOW TO EDIT (for agentic coding assistants)
-    \\#   1. Inspect:
-    \\#        voice --phonemize "Elisa"
-    \\#   2. Prefer `say:…` when the name is clearly compound (E + Lisa).
-    \\#      Prefer IPA when it's one orthographic unit to fine-tune.
-    \\#   3. Edit this file; case-sensitive keys (store Elisa/ELISA/elisa).
-    \\#   4. Restart: systemctl --user restart presence-voice
-    \\#   5. Play for Mike and iterate until approved.
+    \\#   1. Hear the current pronunciation (use Ada's preset — positional, not -p):
+    \\#        voice --phonemize "Elise Smullin"
+    \\#        voice nova "Her name is Elise Smullin."
+    \\#      Ada uses preset `nova` (Kokoro af_nova). There is no -p flag;
+    \\#      `voice -p nova "…"` falls back to default_preset/fallback (often lessac).
+    \\#   2. If wrong, capture a better IPA (espeak OOV is on by default):
+    \\#        voice --phonemize "Elise"
+    \\#   3. Add/update a line below:
+    \\#        Smullin: "smˈʌlᵻn"
+    \\#   4. Restart the daemon so the file is re-read:
+    \\#        systemctl --user restart presence-voice
+    \\#   5. Play for Mike and ask for approval:
+    \\#        voice nova "Smullin."
+    \\#   6. Iterate on the IPA until approved; leave a trailing comment with date/note.
     \\#
     \\# SYNTAX
-    \\#   Key: "value"     # value = IPA  OR  say:<words>
-    \\#   # comments and blank lines ok
+    \\#   Word: "ipa-string"
+    \\#   - Keys are matched case-sensitively against G2P tokens (also store
+    \\#     Capitalized and ALLCAPS variants if needed).
+    \\#   - Values are Kokoro IPA (misaki/zig-phonemes alphabet), usually quoted.
+    \\#   - One orthographic token per line (not multi-word keys).
+    \\#   - Lines starting with # are comments; blank lines are fine.
+    \\#
+    \\# EXAMPLES
+    \\# Smullin: "smˈʌlᵻn"
     \\
 ;
-
-/// Whole-word rewrites (key → replacement phrase), applied before G2P.
-pub const RewriteMap = std.StringHashMap([]const u8);
-
-pub const LoadResult = struct {
-    ipa_count: usize = 0,
-    say_count: usize = 0,
-    rewrites: RewriteMap,
-};
 
 /// Ensure the config file exists with the documented template (no overwrite).
 pub fn ensureTemplate(io: std.Io, path: []const u8) void {
@@ -101,14 +96,11 @@ fn mkdirP(dir: []const u8) void {
     }
 }
 
-/// Load names.yaml: IPA → gold lexicon; `say:…` → rewrite map.
-pub fn load(alloc: std.mem.Allocator, io: std.Io, path: []const u8, lexicon: *Lexicon) !LoadResult {
-    var rewrites = RewriteMap.init(alloc);
-    const bytes = std.Io.Dir.cwd().readFileAlloc(io, path, alloc, .limited(1 << 20)) catch {
-        return .{ .rewrites = rewrites };
-    };
-    var ipa_count: usize = 0;
-    var say_count: usize = 0;
+/// Load names.yaml and inject into the gold lexicon (highest priority).
+/// Returns count of entries applied.
+pub fn applyToLexicon(alloc: std.mem.Allocator, io: std.Io, path: []const u8, lexicon: *Lexicon) !usize {
+    const bytes = std.Io.Dir.cwd().readFileAlloc(io, path, alloc, .limited(1 << 20)) catch return 0;
+    var count: usize = 0;
     var lines = std.mem.splitScalar(u8, bytes, '\n');
     while (lines.next()) |raw| {
         const line = trimCommentAndSpace(raw);
@@ -124,54 +116,15 @@ pub fn load(alloc: std.mem.Allocator, io: std.Io, path: []const u8, lexicon: *Le
             val_raw = val_raw[1 .. val_raw.len - 1];
         }
         if (val_raw.len == 0) continue;
+        // Ignore legacy say: lines if any remain in an old file
+        if (std.ascii.startsWithIgnoreCase(val_raw, "say:")) continue;
 
         const key = try alloc.dupe(u8, key_raw);
-        // say:… → orthographic rewrite (before G2P)
-        if (std.ascii.startsWithIgnoreCase(val_raw, "say:")) {
-            const phrase = std.mem.trim(u8, val_raw["say:".len..], " \t");
-            if (phrase.len == 0) continue;
-            try rewrites.put(key, try alloc.dupe(u8, phrase));
-            say_count += 1;
-            continue;
-        }
-        // else IPA → gold lexicon
         const ipa = try alloc.dupe(u8, val_raw);
         try lexicon.golds.put(key, .{ .str = ipa });
-        ipa_count += 1;
+        count += 1;
     }
-    return .{ .ipa_count = ipa_count, .say_count = say_count, .rewrites = rewrites };
-}
-
-/// Replace whole-word keys (letter/digit/' runs) with their `say:` phrases.
-pub fn applyRewrites(alloc: std.mem.Allocator, text: []const u8, rewrites: *const RewriteMap) ![]const u8 {
-    if (rewrites.count() == 0) return text;
-
-    var out: std.ArrayList(u8) = .empty;
-    errdefer out.deinit(alloc);
-
-    var i: usize = 0;
-    while (i < text.len) {
-        // non-word run
-        const start = i;
-        while (i < text.len and !isWordByte(text[i])) : (i += 1) {}
-        if (i > start) try out.appendSlice(alloc, text[start..i]);
-        if (i >= text.len) break;
-
-        // word run
-        const w0 = i;
-        while (i < text.len and isWordByte(text[i])) : (i += 1) {}
-        const word = text[w0..i];
-        if (rewrites.get(word)) |phrase| {
-            try out.appendSlice(alloc, phrase);
-        } else {
-            try out.appendSlice(alloc, word);
-        }
-    }
-    return try out.toOwnedSlice(alloc);
-}
-
-fn isWordByte(c: u8) bool {
-    return std.ascii.isAlphanumeric(c) or c == '\'' or c == '’';
+    return count;
 }
 
 fn trimCommentAndSpace(raw: []const u8) []const u8 {
