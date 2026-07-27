@@ -40,9 +40,11 @@ pub fn main(init: std.process.Init) !void {
     if (args.len > 1 and std.mem.eql(u8, args[1], "--phonemize")) {
         const text = if (args.len > 2) args[2] else "Hello world, this is a test.";
         const phonemizer = try kokoro.Phonemizer.init(arena, init.io, paths.ZIG_PHONEMES_DATA, false);
-        try stdout.print("[Kokoro] G2P loaded (espeak={s} names={d} path={s})\n", .{
+        try stdout.print("[Kokoro] G2P loaded (espeak={s} names={d} ipa={d} say={d} path={s})\n", .{
             if (phonemizer.hasEspeak()) "on" else "off",
-            phonemizer.names_loaded,
+            phonemizer.namesLoaded(),
+            phonemizer.names_ipa,
+            phonemizer.names_say,
             phonemizer.names_path,
         });
         const phonemes = try phonemizer.phonemize(arena, text);

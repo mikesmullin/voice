@@ -30,17 +30,22 @@ pub const Phonemizer = struct {
     g2p: G2P,
     /// Heap-stable so `g2p.espeak` can point at it for the process lifetime.
     espeak: ?*Espeak = null,
-    /// How many names.yaml entries were loaded (for logging).
-    names_loaded: usize = 0,
+    /// IPA overrides + say: rewrite count (for logging).
+    names_ipa: usize = 0,
+    names_say: usize = 0,
     names_path: []const u8 = "",
+    /// Whole-word orthographic rewrites from names.yaml (`say:E Lisa`).
+    rewrites: names.RewriteMap = undefined,
 
     pub fn init(arena: std.mem.Allocator, io: std.Io, data_dir: []const u8, british: bool) !Phonemizer {
         var g2p = try G2P.init(arena, io, data_dir, british);
 
-        // Custom pronunciations win over dictionary + espeak (load first).
+        // Custom pronunciations: IPA → gold lexicon; say: → pre-G2P rewrites.
         const names_path = try names.defaultPath(arena);
         names.ensureTemplate(io, names_path);
-        const n_names = names.applyToLexicon(arena, io, names_path, &g2p.lexicon) catch 0;
+        const loaded = names.load(arena, io, names_path, &g2p.lexicon) catch names.LoadResult{
+            .rewrites = names.RewriteMap.init(arena),
+        };
 
         // espeak-ng OOV fallback — without this, unknown names phonemize to ""
         // and Kokoro speaks a gap ("…") instead of the word.
@@ -51,24 +56,31 @@ pub const Phonemizer = struct {
             g2p.espeak = p;
             espeak_ptr = p;
         } else |_| {
-            // Soft-fail: lexicon + names.yaml still work; OOV may stay silent.
             espeak_ptr = null;
         }
 
         return .{
             .g2p = g2p,
             .espeak = espeak_ptr,
-            .names_loaded = n_names,
+            .names_ipa = loaded.ipa_count,
+            .names_say = loaded.say_count,
             .names_path = names_path,
+            .rewrites = loaded.rewrites,
         };
     }
 
     pub fn phonemize(self: *const Phonemizer, arena: std.mem.Allocator, text: []const u8) ![]const u8 {
-        return self.g2p.convert(arena, text);
+        const rewritten = try names.applyRewrites(arena, text, &self.rewrites);
+        return self.g2p.convert(arena, rewritten);
     }
 
     pub fn hasEspeak(self: *const Phonemizer) bool {
         return self.espeak != null;
+    }
+
+    /// Total names.yaml entries (IPA + say rewrites) for logs.
+    pub fn namesLoaded(self: *const Phonemizer) usize {
+        return self.names_ipa + self.names_say;
     }
 };
 
