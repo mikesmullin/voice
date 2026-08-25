@@ -87,12 +87,12 @@ voices:
   aoede:
     engine: kokoro
     voice: "af_aoede"
-    speed: 1.0
+    speed: 1.2
   
   ada:
     engine: kokoro
     voice: "af_aoede"
-    speed: 1.5
+    speed: 1.4
   
   kore:
     engine: kokoro
