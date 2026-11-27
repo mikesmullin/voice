@@ -177,7 +177,7 @@ voice -i alan              # details for one preset
 
 ```bash
 voice serve                # unix socket only
-voice serve --http         # ...also start the HTTP API (127.0.0.1:3124)
+voice serve --http         # ...also start the HTTP API (default loopback:3124; the service unit pins 0.0.0.0:3125)
 ```
 
 Preloads every preset in `config.yaml`'s `preload:` list at startup (same
@@ -202,18 +202,18 @@ POST /speak              -> body {"text", "voice"?, "mode"?, "gain"?, "speaker"?
 ```
 
 ```bash
-curl -X POST http://127.0.0.1:3124/speak \
+curl -X POST http://127.0.0.1:3125/speak \
   -d '{"text":"Hello","voice":"bella","mode":"download"}' -o out.wav
 ```
 
 ```bash
 # Qwen3-TTS (CPU):
-curl -X POST http://127.0.0.1:3124/speak \
+curl -X POST http://127.0.0.1:3125/speak \
   -d '{"text":"Well, y'"'"'all, this is Ruthie speaking.","voice":"ruthie","mode":"download"}' -o out.wav
 ```
 
 The browser SPA (`web/index.html`, served at `GET /`) is a working
-Alpine.js + Tailwind demo page - open `http://127.0.0.1:3124/` once
+Alpine.js + Tailwind demo page - open `http://127.0.0.1:3125/` once
 `serve --http` is running.
 
 ## Background music (random-start background effect)

@@ -20,10 +20,10 @@ const cli = @import("cli.zig");
 const paths = @import("paths.zig");
 const timing = @import("timing.zig");
 
-fn httpThread(d: *daemon_mod.Daemon, io: std.Io) void {
+fn httpThread(d: *daemon_mod.Daemon, io: std.Io, bind: []const u8, port: u16) void {
     var buf: [4096]u8 = undefined;
     var w = std.Io.File.stdout().writer(io, &buf);
-    http_mod.serve(d, io, 3124, &w.interface) catch |err| {
+    http_mod.serve(d, io, bind, port, &w.interface) catch |err| {
         std.debug.print("[HTTP] fatal: {t}\n", .{err});
     };
 }
@@ -196,13 +196,33 @@ pub fn main(init: std.process.Init) !void {
             }
         }
 
+        // Bind/port come from the environment so the .service unit can
+        // pin them (the daemon's compiled-in default stays loopback so
+        // a bare `voice serve --http` never exposes itself by accident).
+        // Validated up front so a bad unit file fails the process at
+        // startup instead of silently losing the HTTP API.
+        const bind = init.environ_map.get("VOICE_HTTP_BIND") orelse "127.0.0.1";
+        const port_raw = init.environ_map.get("VOICE_HTTP_PORT") orelse "3124";
+        const port = std.fmt.parseInt(u16, port_raw, 10) catch {
+            std.debug.print("[HTTP] invalid VOICE_HTTP_PORT '{s}' (expected 1-65535)\n", .{port_raw});
+            return error.InvalidHTTPConfig;
+        };
+        if (port == 0) {
+            std.debug.print("[HTTP] invalid VOICE_HTTP_PORT '0' (expected 1-65535)\n", .{});
+            return error.InvalidHTTPConfig;
+        }
+        _ = std.Io.net.IpAddress.parseIp4(bind, port) catch {
+            std.debug.print("[HTTP] invalid VOICE_HTTP_BIND '{s}' (expected an IPv4 address, e.g. 127.0.0.1 or 0.0.0.0)\n", .{bind});
+            return error.InvalidHTTPConfig;
+        };
+
         const cfg = try config_mod.Config.load(arena, init.io, config_path);
         var d = try daemon_mod.Daemon.init(arena, init.io, cfg);
         try d.preload(stdout);
         timing.logf(stdout, init.io, "[Daemon] Preload complete, engines ready\n", .{});
 
         if (http_enabled) {
-            _ = try std.Thread.spawn(.{}, httpThread, .{ &d, init.io });
+            _ = try std.Thread.spawn(.{}, httpThread, .{ &d, init.io, bind, port });
         }
         try d.serve("/tmp/presence-voice.sock", stdout);
         return;

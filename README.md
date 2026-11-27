@@ -64,7 +64,7 @@ To run the daemon (recommended - see `presence-voice.service` for systemd
 ./zig-out/bin/voice serve --http
 # in another shell:
 ./zig-out/bin/voice bella "Hello from Kokoro, via the daemon."
-curl http://127.0.0.1:3124/health
+curl http://127.0.0.1:3125/health  # via the service unit (VOICE_HTTP_PORT)
 ```
 
 ## Features (beyond the four engines)

@@ -20,12 +20,12 @@ const cli = @import("cli.zig");
 const paths = @import("paths.zig");
 const timing = @import("timing.zig");
 
-pub fn serve(daemon: *daemon_mod.Daemon, io: std.Io, port: u16, log: *std.Io.Writer) !void {
-    const addr = try std.Io.net.IpAddress.parseIp4("127.0.0.1", port);
+pub fn serve(daemon: *daemon_mod.Daemon, io: std.Io, bind: []const u8, port: u16, log: *std.Io.Writer) !void {
+    const addr = try std.Io.net.IpAddress.parseIp4(bind, port);
     var server = try addr.listen(io, .{});
     defer server.socket.close(io);
 
-    timing.logf(log, io, "[Daemon] HTTP API listening on 127.0.0.1:{d}\n", .{port});
+    timing.logf(log, io, "[Daemon] HTTP API listening on {s}:{d}\n", .{ bind, port });
 
     while (true) {
         var conn = server.accept(io) catch |err| {
