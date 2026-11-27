@@ -1,6 +1,6 @@
 # 🗣️ voice
 
-Always-on local text-to-speech CLI + daemon (Piper + Kokoro), written in
+Always-on local text-to-speech CLI + daemon (Piper + Kokoro + Audio8 CPU/GPU), written in
 Zig + ONNX Runtime. CLI, unix socket, HTTP API, and a browser SPA all
 talk to the same running process (the `presence-voice` systemd service,
 see `presence-voice.service`).
@@ -78,7 +78,7 @@ protocol, stingers, hardcoded model paths).
 
 ## Documentation
 
-- `SKILL.md` - operator guide (commands, HTTP API, known gaps, toolchain notes)
+- `SKILL.md` - operator guide (commands, HTTP API, known gaps, toolchain notes, Audio8 setup)
 - `tmp/PHASE3_PLAN.md` - full design rationale and decisions log
 - `presence-voice.service` - systemd --user unit
 

@@ -244,6 +244,12 @@ pub fn main(init: std.process.Init) !void {
 
     const opts = try cli.parseOptions(arena, rest);
 
+    if (opts.cpu and opts.gpu) {
+        try stdout.print("error: --cpu/-C and --gpu are mutually exclusive\n", .{});
+        try stdout.flush();
+        std.process.exit(1);
+    }
+
     if (opts.help) {
         try stdout.print(cli.HELP_TEXT, .{});
         try stdout.flush();
@@ -274,11 +280,17 @@ pub fn main(init: std.process.Init) !void {
         std.process.exit(1);
     };
 
+    if (opts.gpu and !std.mem.eql(u8, preset.engine, "audio8")) {
+        try stdout.print("error: --gpu is only supported for audio8 presets (engine is '{s}')\n", .{preset.engine});
+        try stdout.flush();
+        std.process.exit(1);
+    }
+
     if (is_local) {
         timing.logf(stdout, init.io, "[Voice] Loading '{s}' ({s}) standalone...\n", .{ resolved.preset_name, preset.engine });
         var d = try daemon_mod.Daemon.init(arena, init.io, cfg);
         d.force_cpu = opts.cpu;
-        var result = try d.synthesize(arena, preset, resolved.text, stdout);
+        var result = try d.synthesize(arena, preset, resolved.text, stdout, opts.gpu);
         cli.applyGain(result.samples, opts.gain);
 
         const resolved_fx = effects_mod.resolveEffects(arena, &cfg, opts.effects.items) catch {
@@ -345,9 +357,11 @@ pub fn main(init: std.process.Init) !void {
     var write_buf: [4096]u8 = undefined;
     var writer = conn.writer(init.io, &write_buf);
     const effects_csv = try std.mem.join(arena, ",", opts.effects.items);
-    // schedule is always explicit on the wire (enqueue unless -I/--interrupt)
+    // schedule is always explicit on the wire (enqueue unless -I/--interrupt);
+    // backend rides along too (cpu default, gpu = audio8's CUDA backend).
     const schedule: []const u8 = if (opts.interrupt) "interrupt" else "enqueue";
-    try writer.interface.print("{s}\t{s}\t{s}\t{s}\t{s}\n", .{ resolved.preset_name, opts.speaker orelse "", effects_csv, schedule, resolved.text });
+    const backend: []const u8 = if (opts.gpu) "gpu" else "cpu";
+    try writer.interface.print("{s}\t{s}\t{s}\t{s}\t{s}\t{s}\n", .{ resolved.preset_name, opts.speaker orelse "", effects_csv, schedule, backend, resolved.text });
     try writer.interface.flush();
     timing.logf(stdout, init.io, "[Client] Request sent, waiting for response...\n", .{});
 

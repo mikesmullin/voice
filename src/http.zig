@@ -5,6 +5,8 @@
 //! std.Io's default threaded backend is safe to share across threads.
 //!
 //! `mode=download` returns WAV bytes (for the browser SPA, milestone 6);
+//! POST /speak also takes an optional "backend" ("cpu" default, "gpu" for
+//! audio8's CUDA backend).
 //! `mode=play` (the default) plays through the daemon's own persistent
 //! audio output, same as the unix socket protocol.
 
@@ -139,6 +141,17 @@ fn handleSpeak(daemon: *daemon_mod.Daemon, request: *std.http.Server.Request, io
         .string => |s| if (s.len == 0) null else s,
         else => null,
     } else null;
+    // audio8 backend select (mirrors the unix-socket protocol's optional
+    // field): "cpu" (default) or "gpu" (CUDA). Anything else is a 400.
+    const audio8_gpu: bool = if (obj.get("backend")) |v| switch (v) {
+        .string => |s| blk: {
+            if (std.mem.eql(u8, s, "gpu")) break :blk true;
+            if (std.mem.eql(u8, s, "cpu")) break :blk false;
+            try request.respond("{\"error\":\"backend must be 'cpu' or 'gpu'\"}\n", .{ .status = .bad_request });
+            return;
+        },
+        else => false,
+    } else false;
     var effect_names: std.ArrayList([]const u8) = .empty;
     if (obj.get("effects")) |v| switch (v) {
         .array => |arr| for (arr.items) |item| if (item == .string) try effect_names.append(alloc, item.string),
@@ -147,7 +160,7 @@ fn handleSpeak(daemon: *daemon_mod.Daemon, request: *std.http.Server.Request, io
 
     if (std.mem.eql(u8, mode, "download")) {
         const t0 = timing.elapsedSeconds(io);
-        var result = daemon.synthesize(alloc, preset, text, log) catch |err| {
+        var result = daemon.synthesize(alloc, preset, text, log, audio8_gpu) catch |err| {
             timing.logf(log, io, "[HTTP] synth error: {t}\n", .{err});
             try request.respond("{\"error\":\"synthesis failed\"}\n", .{ .status = .internal_server_error });
             return;
@@ -184,7 +197,7 @@ fn handleSpeak(daemon: *daemon_mod.Daemon, request: *std.http.Server.Request, io
     if (interrupt) daemon.output.stopSpeech();
 
     const t0 = timing.elapsedSeconds(io);
-    const n = daemon.synthesizeAndPlay(preset, text, true, log, speaker, effect_names.items) catch |err| {
+    const n = daemon.synthesizeAndPlay(preset, text, true, log, speaker, effect_names.items, audio8_gpu) catch |err| {
         if (err == error.UnknownSpeaker) {
             try request.respond("{\"error\":\"unknown speaker (see 'voice speakers')\"}\n", .{ .status = .bad_request });
             return;

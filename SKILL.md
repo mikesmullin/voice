@@ -45,6 +45,39 @@ ready to go, not just the preloaded ones. On a slow connection, pass
 ./scripts/fetch-models.sh --preload-only
 ```
 
+The **Audio8 TTS** engine (compact multilingual zero-shot TTS) has TWO
+backends sharing one engine name and one voice registration:
+- **CPU** (default): official INT8 ONNX runtime, ~820MB of weights at
+  /workspace/models/audio8-tts/ - set up with `./scripts/setup-audio8.sh`
+  (below). No GPU needed.
+- **GPU** (`--gpu`): full-precision PyTorch checkpoint on CUDA, ~1.6GB at
+  /workspace/models/audio8-tts-pt/ + a torch venv at
+  /workspace/models/audio8-gpu/.venv - set up with
+  `./scripts/setup-audio8-gpu.sh`. Needs an NVIDIA GPU; CPU-only machines
+  skip this. Both backends read the SAME registered voice
+  (codes.npy + reference_text out of vendor/audio8-runtime/voices/<name>/),
+  so one clone serves `voice local ruth ...` with or without `--gpu`.
+
+```bash
+./scripts/setup-audio8.sh       # CPU backend (required for any audio8 use)
+./scripts/setup-audio8-gpu.sh   # GPU backend (only if you want --gpu)
+```
+
+`./scripts/audio8-register-voice.sh --wav ref.wav --name ruth
+--transcript t.txt` clones a new voice from a 0.5-30s reference recording
++ its exact transcript (writes vendor/audio8-runtime/voices/<name>/, then
+add a matching `engine: audio8` preset to config.yaml). "Ruth" was
+registered this way from ~/Downloads/ruth2.wav (29.6s) + the narration
+transcript kept in the commit message that introduced it.
+
+This downloads the model to /workspace/models/audio8-tts/ (via `hf download`),
+vendors the official `arktts_runtime` Python package into
+vendor/audio8-runtime/ (gitignored - cloned from Audio8-AI/Audio8_TTS at a
+pinned commit), creates a venv there, and registers the packaged reference
+voice ("default"). Requires `hf` on PATH and a Python 3.10+ interpreter
+for the venv (the script tries python3.10 -> python3.13 -> python3; it
+skips broken ones and fails with a clear message if nothing works).
+
 ## Core Commands
 
 ### Direct synthesis (daemon-backed - the fast path)
@@ -62,7 +95,18 @@ isn't reachable - it will NOT silently fall back to standalone synthesis.
 voice lessac "Piper is fast and CPU-only."
 voice bella "Kokoro, GPU-accelerated when available."
 voice "No preset given, uses the configured default."
+
+# Audio8 (two backends, one preset - --cpu default, --gpu for CUDA):
+voice audio8 "Compact multilingual zero-shot TTS, cloned from the packaged reference voice."
+voice local ruth "Ruth on CPU (default, no flag needed)."
+voice local ruth --gpu "Ruth on CUDA (audio8 presets only)."
+voice ruth --gpu "Same, but via the daemon (needs the daemon running)."
 ```
+
+`--cpu`/`-C` and `--gpu`/`-gpu` are mutually exclusive (combining them is
+a hard error); `--gpu` with a non-audio8 preset is a hard error too. `-C`
+keeps its old meaning for Kokoro (force CPU); for audio8 it just selects
+the default CPU backend explicitly.
 
 ### Standalone synthesis (no daemon required)
 
@@ -121,6 +165,25 @@ Alpine.js + Tailwind demo page - open `http://127.0.0.1:3124/` once
 `serve --http` is running.
 
 ## Known gaps (intentional, not oversights)
+
+- **Audio8 is subprocess-backed, not in-process** - each `audio8` request
+  spawns a Python runtime and reads the resulting WAV back into the normal
+  output path. CPU path: official ONNX runtime
+  (`vendor/audio8-runtime/.venv/bin/python -m arktts_runtime.cli ...`),
+  ~12-15s per call including session load. GPU path (`--gpu`):
+  `scripts/audio8_gpu_synth.py` under the torch venv (~7-20s cold per call -
+  no persistent process holds the CUDA kernels warm yet; a warm in-process
+  run does the same work in ~4s, so a persistent GPU worker is the obvious
+  next latency win). Neither backend is preloadable (the preload list only
+  covers Kokoro/Piper presets with persistent sessions) and the `speed`
+  config field is ignored for audio8 (no speed knob in either upstream CLI).
+  `-C/--cpu` is meaningless for audio8 beyond selecting the default.
+- **Unix-socket protocol is v2**: `preset\tspeaker\teffects\tschedule\t[backend\t]text`
+  (`backend` = `cpu`/`gpu`, audio8 only). The daemon accepts old 5-field
+  lines (no backend = CPU); new CLIs always send 6 fields. Same for HTTP
+  `POST /speak`, which takes an optional `"backend"` field.
+  The engine also ignores `-C/--cpu` (the export is CPU-only by design) -
+  that flag is meaningless for it, it just works.
 
 - **Model paths are constants, not a `config.yaml` field**
   (`src/daemon.zig`): they now point at `./models/kokoro/` and

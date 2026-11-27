@@ -1,5 +1,5 @@
 # Voice Configuration File
-# Supports multiple TTS engines: kokoro (GPU), piper (CPU)
+# Supports multiple TTS engines: kokoro (GPU), piper (CPU), audio8 (CPU ONNX runtime, see src/engines/audio8.zig)
 
 # Default fallback voice when server is unavailable
 fallback_voice: lessac
@@ -64,6 +64,28 @@ effects:
         - file: "sfx/error.wav"
 
 voices:
+  # =============================================================================
+  # AUDIO8 VOICES (compact multilingual zero-shot TTS, CPU + GPU backends)
+  # =============================================================================
+  # Two backends, one preset shape. CPU weights live OUTSIDE this repo at
+  # /workspace/models/audio8-tts/ (fetch via scripts/setup-audio8.sh); GPU
+  # checkpoint at /workspace/models/audio8-tts-pt/ (scripts/setup-audio8-gpu.sh).
+  # Registered voice names are files under vendor/audio8-runtime/voices/
+  # ("default" is the packaged reference voice; "Ruth" was cloned from
+  # ~/Downloads/ruth2.wav - see SKILL.md). Pick backend per request:
+  # default (or --cpu) = ONNX CPU, --gpu = PyTorch CUDA. The engine ignores
+  # per-preset `speed` (no speed knob in either upstream CLI).
+
+  audio8:
+    engine: audio8
+    voice: "default"
+    speed: 1.0
+
+  ruth:
+    engine: audio8
+    voice: "Ruth"
+    speed: 1.0
+
   # ==========================================================================
   # KOKORO VOICES (GPU-accelerated, highest quality)
   # ==========================================================================
