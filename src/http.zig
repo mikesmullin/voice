@@ -15,6 +15,7 @@ const std = @import("std");
 const daemon_mod = @import("daemon.zig");
 const wav = @import("audio/wav.zig");
 const effects = @import("audio/effects.zig");
+const output = @import("audio/output.zig");
 const cli = @import("cli.zig");
 const paths = @import("paths.zig");
 const timing = @import("timing.zig");
@@ -173,9 +174,14 @@ fn handleSpeak(daemon: *daemon_mod.Daemon, request: *std.http.Server.Request, io
         if (resolved.chain.items.len > 0) {
             result.samples = try effects.applyChain(alloc, result.samples, result.sample_rate, resolved.chain.items);
         }
-        cli.applyGain(result.samples, std.math.clamp(gain, 0.0, 2.0));
-        const wav_bytes = try wav.encodeMono16(alloc, result.sample_rate, result.samples);
-        timing.logf(log, io, "[HTTP] /speak {s} (download): {d} samples ({d:.2}s)\n", .{ voice_name, result.samples.len, timing.elapsedSeconds(io) - t0 });
+        // The stinger + background music live in the PLAY pipeline
+        // (output.playChain) — render them into the download too, or a
+        // preset's bed (Ruthie's appalachian music) is silently missing
+        // from downloaded wav's.
+        const rendered = try output.renderChainOffline(alloc, io, result.samples, result.sample_rate, resolved.stinger_files.items, resolved.background, log);
+        cli.applyGain(rendered.samples, std.math.clamp(gain, 0.0, 2.0));
+        const wav_bytes = try wav.encodeMono16(alloc, rendered.rate, rendered.samples);
+        timing.logf(log, io, "[HTTP] /speak {s} (download): {d} samples ({d:.2}s)\n", .{ voice_name, rendered.samples.len, timing.elapsedSeconds(io) - t0 });
         try request.respond(wav_bytes, .{
             .extra_headers = &.{.{ .name = "content-type", .value = "audio/wav" }},
         });

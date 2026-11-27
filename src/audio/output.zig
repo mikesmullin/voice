@@ -196,3 +196,104 @@ pub const Output = struct {
         _ = self;
     }
 };
+/// The offline twin of `playChain`: the same audible result — stinger(s),
+/// then the voice, with the background bed mixed under — rendered into
+/// ONE buffer instead of queued to the mixer. The /speak download path
+/// used to ship only the filter chain, which is why a preset's music bed
+/// (Ruthie's appalachian background) and stingers were missing from
+/// downloaded wav's: they live in the play pipeline. The result is at
+/// `World.mix_rate`; the rate comes back with it so the encoder matches.
+pub fn renderChainOffline(
+    alloc: std.mem.Allocator,
+    io: std.Io,
+    samples: []const f32,
+    rate: u32,
+    stinger_paths: []const []const u8,
+    background: ?effects_mod.BackgroundChoice,
+    log: ?*std.Io.Writer,
+) !struct { samples: []f32, rate: u32 } {
+    const mix_rate = g_world.mix_rate;
+    var chunks: std.ArrayList([]const f32) = .empty;
+    var total_frames: usize = 0;
+    for (stinger_paths) |path| {
+        const wav_data = audiofile.readMono(alloc, io, path) catch continue;
+        const r = resample(alloc, wav_data.samples, wav_data.sample_rate, mix_rate) catch continue;
+        total_frames += r.len;
+        try chunks.append(alloc, r);
+    }
+    const voice_r = try resample(alloc, samples, rate, mix_rate);
+    total_frames += voice_r.len;
+    try chunks.append(alloc, voice_r);
+
+    const out = try alloc.alloc(f32, total_frames);
+    var at: usize = 0;
+    for (chunks.items) |c| {
+        @memcpy(out[at..][0..c.len], c);
+        at += c.len;
+    }
+
+    if (background) |bg| {
+        const bed = try loadBed(alloc, io, bg, total_frames, mix_rate, log);
+        defer alloc.free(bed);
+        if (bed.len > 0) {
+            for (out, 0..) |*s, i| {
+                const b = bed[i % bed.len] * bg.volume;
+                s.* = std.math.clamp(s.* + b, -1.0, 1.0);
+            }
+        }
+    }
+    return .{ .samples = out, .rate = mix_rate };
+}
+
+/// The bed window playChain would enqueue: a slice read sized to the
+/// rendered audio (multi-hour tracks are never loaded whole), tiled to
+/// exactly that length, resampled to the mix rate. Random offset per
+/// call when the choice asks for one.
+fn loadBed(
+    alloc: std.mem.Allocator,
+    io: std.Io,
+    bg: effects_mod.BackgroundChoice,
+    total_frames: usize,
+    mix_rate: u32,
+    log: ?*std.Io.Writer,
+) ![]f32 {
+    const empty = try alloc.alloc(f32, 0);
+    const hdr = audiofile.readHeader(alloc, io, bg.path) catch {
+        if (log) |l| l.print("[Music] skipping {s} (not found or unreadable)\n", .{bg.path}) catch {};
+        return empty;
+    };
+    const need_file_frames: usize = @intFromFloat(@ceil(@as(f64, @floatFromInt(total_frames)) * @as(f64, @floatFromInt(hdr.sample_rate)) / @as(f64, @floatFromInt(mix_rate))));
+    var offset: usize = 0;
+    if (bg.random_start and hdr.total_frames > 0) {
+        const total: usize = @intCast(hdr.total_frames);
+        // Fresh entropy per call, same as playChain — a fixed seed would
+        // open every recording at the same bar of the track.
+        var seed: u64 = undefined;
+        std.Io.random(io, std.mem.asBytes(&seed));
+        var prng = std.Random.DefaultPrng.init(seed);
+        offset = prng.random().intRangeAtMost(usize, 0, total - 1);
+    }
+    const wav_data = audiofile.readSlice(alloc, io, bg.path, offset, need_file_frames) catch {
+        if (log) |l| l.print("[Music] skipping {s} (slice read failed)\n", .{bg.path}) catch {};
+        return empty;
+    };
+    const r = resample(alloc, wav_data.samples, wav_data.sample_rate, mix_rate) catch {
+        if (log) |l| l.print("[Music] skipping {s} (resample failed)\n", .{bg.path}) catch {};
+        return empty;
+    };
+    if (log) |l| {
+        l.print("[Music] {s} (offset {d:.1}s, gain {d:.2})\n", .{
+            bg.path,
+            @as(f64, @floatFromInt(offset)) / @as(f64, @floatFromInt(hdr.sample_rate)),
+            bg.volume,
+        }) catch {};
+    }
+    const tiled = try alloc.alloc(f32, total_frames);
+    if (r.len == 0) {
+        @memset(tiled, 0);
+    } else {
+        for (tiled, 0..) |*s, i| s.* = r[i % r.len];
+    }
+    return tiled;
+}
+
