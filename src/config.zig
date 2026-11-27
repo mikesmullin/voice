@@ -93,6 +93,10 @@ pub const Config = struct {
     /// with no `llm:` block at all still behaves sensibly.
     llm_completion_url: ?[]const u8 = null,
     llm_model: ?[]const u8 = null,
+    /// Reasoning level for hybrid-reasoning local models (wired to the
+    /// request's `reasoning_effort`; "low"/"medium"/"high"). `null` omits
+    /// the field entirely.
+    llm_reasoning_effort: ?[]const u8 = null,
 
     pub fn load(alloc: std.mem.Allocator, io: std.Io, path: []const u8) !Config {
         const bytes = try std.Io.Dir.cwd().readFileAlloc(io, path, alloc, .limited(1 << 20));
@@ -231,6 +235,8 @@ pub const Config = struct {
                             config.llm_completion_url = try alloc.dupe(u8, unquote(kv.value));
                         } else if (std.mem.eql(u8, kv.key, "model")) {
                             config.llm_model = try alloc.dupe(u8, unquote(kv.value));
+                        } else if (std.mem.eql(u8, kv.key, "reasoning_effort")) {
+                            config.llm_reasoning_effort = try alloc.dupe(u8, unquote(kv.value));
                         }
                     }
                 },

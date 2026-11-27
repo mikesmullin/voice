@@ -141,8 +141,9 @@ pub const Daemon = struct {
         if (preset.personality_prompt) |prompt| {
             const completion_url = self.config.llm_completion_url orelse DEFAULT_LLM_COMPLETION_URL;
             const model = self.config.llm_model orelse DEFAULT_LLM_MODEL;
+            const reasoning_effort = self.config.llm_reasoning_effort;
             var llm_ok = true;
-            actual_text = llm.rewrite(alloc, self.io, completion_url, model, prompt, text) catch |err| blk: {
+            actual_text = llm.rewrite(alloc, self.io, completion_url, model, prompt, text, reasoning_effort) catch |err| blk: {
                 llm_ok = false;
                 if (log) |l| timing.logf(l, self.io, "[LLM] rewrite failed ({t}), speaking literal text\n", .{err});
                 break :blk text;

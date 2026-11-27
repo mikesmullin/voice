@@ -220,7 +220,7 @@ voices:
 effects:
   appalachian_background:
     background:
-      volume: 0.27             # gain (0..1+)
+      volume: 0.24             # gain (0..1+)
       random_start: true       # pick a random point in the track per call
       sources:
         - file: "/home/user/.config/voice/music/old-time-appalachian.ogg"

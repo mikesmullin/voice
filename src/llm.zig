@@ -17,7 +17,16 @@ const std = @import("std");
 pub const LlmError = error{ BadResponse, RequestFailed };
 
 const ChatMessage = struct { role: []const u8, content: []const u8 };
-const ChatRequest = struct { model: []const u8, messages: []const ChatMessage, stream: bool };
+const ChatRequest = struct {
+    model: []const u8,
+    messages: []const ChatMessage,
+    stream: bool,
+    /// Reasoning level for hybrid-reasoning models (maps to the wire field
+    /// `reasoning_effort`: "low"/"medium"/"high"). `null` omits the field -
+    /// models that don't think just ignore it when present, so passing it
+    /// through is harmless either way.
+    reasoning_effort: ?[]const u8 = null,
+};
 
 /// Sends `user_text` to the LLM at `completion_url` with `system_prompt`
 /// as the system message, and returns the model's reply (allocated from
@@ -25,13 +34,13 @@ const ChatRequest = struct { model: []const u8, messages: []const ChatMessage, s
 /// response" and fall back to speaking `user_text` literally rather than
 /// failing the whole request - see tmp/FUN_PLAN.md section 4's
 /// "operational dependency" note.
-pub fn rewrite(alloc: std.mem.Allocator, io: std.Io, completion_url: []const u8, model: []const u8, system_prompt: []const u8, user_text: []const u8) ![]const u8 {
+pub fn rewrite(alloc: std.mem.Allocator, io: std.Io, completion_url: []const u8, model: []const u8, system_prompt: []const u8, user_text: []const u8, reasoning_effort: ?[]const u8) ![]const u8 {
     const messages = [_]ChatMessage{
         .{ .role = "system", .content = system_prompt },
         .{ .role = "user", .content = user_text },
     };
-    const req: ChatRequest = .{ .model = model, .messages = &messages, .stream = false };
-    const req_body = try std.json.Stringify.valueAlloc(alloc, req, .{});
+    const req: ChatRequest = .{ .model = model, .messages = &messages, .stream = false, .reasoning_effort = reasoning_effort };
+    const req_body = try std.json.Stringify.valueAlloc(alloc, req, .{ .emit_null_optional_fields = false });
 
     var client: std.http.Client = .{ .allocator = alloc, .io = io };
     defer client.deinit();

@@ -4,6 +4,11 @@
 # Default fallback voice when server is unavailable
 fallback_voice: lessac
 
+# Preset used when no voice is specified (bare `voice "..."` shorthand,
+# `client` with no preset, HTTP /speak with no "voice"). Takes precedence
+# over fallback_voice; lessac stays as the safety net.
+default_preset: ruthie
+
 # Voice presets to warm up (load model + voice, no playback) when `voice serve`
 # starts, so the *first* real `voice hot` request for these presets is as fast
 # as subsequent ones instead of paying a full model/voice load on request 1.
@@ -24,7 +29,11 @@ speakers:
 # unreachable, presets fall back to speaking the literal input text.
 llm:
   completion_url: "http://localhost:1234/v1/chat/completions"
-  model: "local-model"
+  # Must match the model id the local server actually reports
+  # (LM Studio: `default`; llama-server exposes it as `llama-server:default`).
+  model: "default"
+  # Reasoning level for hybrid-reasoning models ("low"/"medium"/"high").
+  reasoning_effort: "medium"
 
 # Effect presets (tmp/FUN_PLAN.md section 2) - `-e/--effect <name>` chains
 # these onto synthesized audio. See src/audio/effects.zig for what each
@@ -60,7 +69,7 @@ effects:
     # server (libopusfile) - no WAV conversion needed. Set a specific gain
     # with volume:.
     background:
-      volume: 0.27
+      volume: 0.24
       random_start: true
       sources:
         - file: "/home/user/.config/voice/music/old-time-appalachian.ogg"
@@ -119,6 +128,11 @@ voices:
     voice: "Ruth"
     speaker: "/workspace/models/qwen3-tts/ruth2.wav"
     effects: [appalachian_background]
+    # Warm Southern-Texas text rewrite (see tmp/FUN_PLAN.md section 4): the
+    # input is rephrased by the local LLM before it is spoken - meaning
+    # preserved, gentle dialect added. Requires LM Studio on localhost:1234;
+    # if it is unreachable the literal input is spoken (degraded, not fatal).
+    personality_prompt: "You are Ruth, a warm, gentle Southern-Texas woman speaking to a friend on the porch. Rewrite the user's spoken phrase in a slow, soft drawl with natural Texas dialect (y'all, reckon, ain't, fixin', might could). Preserve the exact meaning and tone - do NOT add commentary or asides beyond a light Texas flavor. Reply with ONLY the rephrased sentence - no quotes, no labels, no explanations. Examples: I don't mind helping you wash the car if you want to come along -> Well now, I wouldn't mind helping you wash that car, if you reckon you'd like to come along. The rain started this morning, but I'm staying comfortable inside -> The rain started this mornin', but I'm staying put, thank you kindly. Don't you worry your little head about it - I'll handle it -> Don't you worry your little head about it, I'll handle it."
 
   # ==========================================================================
   # KOKORO VOICES (GPU-accelerated, highest quality)
