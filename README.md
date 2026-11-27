@@ -82,7 +82,8 @@ curl http://127.0.0.1:3124/health
 
 Working end-to-end: all four engines synthesize real audio
 (Kokoro on GPU when available, falling back to CPU; Piper always CPU;
-Audio8 + Qwen3-TTS subprocess-backed with CPU/GPU backends each),
+Audio8 subprocess-backed and Qwen3-TTS sidecar-backed, each with CPU/GPU
+backends selected per preset),
 `local`/`client`/`list`/`speakers`/`serve --http` all function, the HTTP API
 and browser SPA work, systemd unit drafted. See `SKILL.md`'s "Known gaps" for
 what's intentionally unfinished (per-request gain/output over the daemon

@@ -127,6 +127,15 @@ voices:
     engine: qwen
     voice: "Ruth"
     speaker: "/workspace/models/qwen3-tts/ruth2.wav"
+    # Sibling transcript of the speaker WAV (generated once with whisper -
+    # see SKILL.md). Sent as `speaker_ref_text` so the sidecar clone has
+    # text to anchor on.
+    speaker_text: "/workspace/models/qwen3-tts/ruth2.txt"
+    # Compute backend for the qwen engine (cpu = llama-tts -ngl 0,
+    # gpu = -ngl 99 full CUDA offload). The single source of truth -
+    # there are no CLI flags for this. Back on cpu: the box is out of
+    # free VRAM right now, so -ngl 99 can't init (falls back loudly).
+    backend: cpu
     effects: [appalachian_background]
     # Warm Southern-Texas text rewrite (see tmp/FUN_PLAN.md section 4): the
     # input is rephrased by the local LLM before it is spoken - meaning

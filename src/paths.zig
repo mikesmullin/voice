@@ -64,3 +64,10 @@ pub const QWEN_MMPROJ = QWEN_MODEL_DIR ++ "/mmproj-Qwen3-TTS-12Hz-1.7B-Base-Q8_0
 pub const QWEN_LLAMATTS = "/usr/bin/llama-tts";
 /// Temporary WAV written (and unlinked immediately) around each synthesis.
 pub const QWEN_TMP_WAV = "/tmp/presence-voice-qwen-";
+/// Persistent sidecar: `llama-server` (v1.0.0+) serving the same GGUFs via
+/// POST /v1/audio/speech (see src/engines/qwen_server.zig). Started lazily
+/// on the first qwen request - never at `voice serve` startup - and shared
+/// by every later `voice` process through this port. Stop it with:
+/// pkill -f "llama-server.*:8081" (it holds ~1.5-4GB RAM/VRAM resident).
+pub const QWEN_SERVER_BIN = "/usr/bin/llama-server";
+pub const QWEN_SERVER_PORT: u16 = 8081;

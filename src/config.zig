@@ -36,11 +36,21 @@ pub const VoicePreset = struct {
     /// the system message, and speaks the *response* instead. `null`
     /// (the default) means no rewrite, no added latency - opt-in only.
     personality_prompt: ?[]const u8 = null,
+    /// Optional sibling transcript of the `speaker` WAV (qwen: sent as
+    /// `speaker_ref_text` so the clone has text to anchor on; generated
+    /// once with whisper, e.g. alongside the WAV). Missing/unreadable =
+    /// omitted, the clone still works.
+    speaker_text: ?[]const u8 = null,
     /// Voice-clone source for engines that need one (qwen: the speaker
     /// WAV that gets cloned, a path). `null` (the default) means the
     /// engine doesn't use it (kokoro/piper/audio8 use `voice` as their
     /// voice id instead).
     speaker: ?[]const u8 = null,
+    /// Preferred compute backend for engines that have two (audio8, qwen):
+    /// "cpu" or "gpu". `null` (the default) means CPU. This is the single
+    /// source of truth - the removed --gpu/--cpu CLI flags error out with
+    /// a pointer here. Ignored by kokoro/piper (no CUDA backend switch).
+    backend: ?[]const u8 = null,
     /// Default effect presets applied to every utterance from this preset
     /// (config.yaml `effects: [name1, name2]` - inline list). Request-
     /// provided `-e`/HTTP effects are appended after these (applied in
@@ -218,6 +228,10 @@ pub const Config = struct {
                                 current_voice.personality_prompt = try alloc.dupe(u8, unquote(kv.value));
                             } else if (std.mem.eql(u8, kv.key, "speaker")) {
                                 current_voice.speaker = try alloc.dupe(u8, unquote(kv.value));
+                            } else if (std.mem.eql(u8, kv.key, "speaker_text")) {
+                                current_voice.speaker_text = try alloc.dupe(u8, unquote(kv.value));
+                            } else if (std.mem.eql(u8, kv.key, "backend")) {
+                                current_voice.backend = try alloc.dupe(u8, unquote(kv.value));
                             } else if (std.mem.eql(u8, kv.key, "effects")) {
                                 try parseInlineList(alloc, kv.value, &current_voice.effects);
                             }

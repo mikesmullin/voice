@@ -174,9 +174,9 @@ pub const Daemon = struct {
             // preset's `speaker:` field - required, not optional.
             const speaker = preset.speaker orelse return error.SpeakerNotConfigured;
             const audio = if (use_gpu)
-                try qwen.synthesizeGpu(alloc, self.io, actual_text, speaker, log)
+                try qwen.synthesizeGpu(alloc, self.io, actual_text, preset.voice, speaker, preset.speaker_text, log)
             else
-                try qwen.synthesize(alloc, self.io, actual_text, speaker, log);
+                try qwen.synthesize(alloc, self.io, actual_text, preset.voice, speaker, preset.speaker_text, log);
             if (log) |l| timing.logf(l, self.io, "[Engine] synthesize done ({d:.3}s)\n", .{timing.elapsedSeconds(self.io) - t0});
             return .{ .samples = audio.samples, .sample_rate = audio.sample_rate };
         } else if (std.mem.eql(u8, preset.engine, "kokoro")) {
@@ -351,18 +351,19 @@ pub const Daemon = struct {
             return .close;
         };
         const schedule_field = rest3[0..tab4];
-        // Optional 6th field: backend ("cpu" default, "gpu" selects the
-        // CUDA backend for audio8/qwen). Old 5-field clients send no tab5 and get CPU.
-        // (Backend travels in-band because the daemon holds no per-request
-        // state - one persistent process serves both backends.)
+        // Optional 6th field: backend ("cpu"/"gpu" - the client's resolved
+        // value; old 5-field clients send no tab5 and get the preset's own
+        // `backend:` below). (Backend travels in-band because the daemon
+        // holds no per-request state - one persistent process serves both
+        // backends.)
         var backend_field: []const u8 = "cpu";
         var text: []const u8 = rest3[tab4 + 1 ..];
         if (std.mem.indexOfScalar(u8, text, '\t')) |tab5| {
             backend_field = text[0..tab5];
             text = text[tab5 + 1 ..];
         }
-        const use_gpu = std.mem.eql(u8, backend_field, "gpu");
-        if (!use_gpu and !std.mem.eql(u8, backend_field, "cpu")) {
+        const wire_gpu = std.mem.eql(u8, backend_field, "gpu");
+        if (!wire_gpu and !std.mem.eql(u8, backend_field, "cpu")) {
             try writeResponse(conn, self.io, "ERR backend must be 'cpu' or 'gpu'\n");
             return .close;
         }
@@ -393,6 +394,13 @@ pub const Daemon = struct {
             return .close;
         };
 
+        // No CLI flags select the backend anymore - the preset is the
+        // source of truth. The wire field carries the client's resolved
+        // value; "cpu" (including old clients that omit the field)
+        // falls back to the preset's own `backend:` here.
+        const preset_gpu = if (preset.backend) |b| std.mem.eql(u8, b, "gpu") else false;
+        const use_gpu = wire_gpu or preset_gpu;
+
         var frame_arena = std.heap.ArenaAllocator.init(self.allocator);
         defer frame_arena.deinit();
         var effect_names: std.ArrayList([]const u8) = .empty;
@@ -415,7 +423,11 @@ pub const Daemon = struct {
                 try writeResponse(conn, self.io, "ERR qwen preset is missing a speaker file (see config.yaml's speaker: field)\n");
                 return .close;
             }
-            return err;
+            // Anything else (engine failure after its own log line): reply
+            // ERR instead of dropping the connection (the client would only
+            // see EndOfStream).
+            try writeResponse(conn, self.io, "ERR synthesis failed\n");
+            return .close;
         };
         timing.logf(log, self.io, "[Daemon] {s}: {d} samples ({d:.2}s)\n", .{ preset_name, n, timing.elapsedSeconds(self.io) - t0 });
         try writeResponse(conn, self.io, "OK\n");

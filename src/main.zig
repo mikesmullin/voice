@@ -251,13 +251,14 @@ pub fn main(init: std.process.Init) !void {
     const is_explicit_client = args.len > 1 and std.mem.eql(u8, args[1], "client");
     const rest = if (is_local or is_explicit_client) args[2..] else args[1..];
 
-    const opts = try cli.parseOptions(arena, rest);
-
-    if (opts.cpu and opts.gpu) {
-        try stdout.print("error: --cpu/-C and --gpu are mutually exclusive\n", .{});
-        try stdout.flush();
-        std.process.exit(1);
-    }
+    const opts = cli.parseOptions(arena, rest) catch |err| {
+        if (err == error.BackendFlagRemoved) {
+            try stdout.print("error: --gpu/--cpu were removed; set `backend: gpu` (or `backend: cpu`) on the preset in config.yaml instead\n", .{});
+            try stdout.flush();
+            std.process.exit(1);
+        }
+        return err;
+    };
 
     if (opts.help) {
         try stdout.print(cli.HELP_TEXT, .{});
@@ -275,6 +276,7 @@ pub fn main(init: std.process.Init) !void {
         };
         try stdout.print("Preset:  {s}\nEngine:  {s}\nVoice:   {s}\nSpeed:   {d}\n", .{ preset_name, preset.engine, preset.voice, preset.speed });
         if (preset.speaker) |spk| try stdout.print("Speaker: {s}\n", .{spk});
+        if (preset.backend) |b| try stdout.print("Backend: {s}\n", .{b});
         if (preset.effects.items.len > 0) {
             try stdout.print("Effects: [", .{});
             for (preset.effects.items, 0..) |e, i| {
@@ -298,17 +300,15 @@ pub fn main(init: std.process.Init) !void {
         std.process.exit(1);
     };
 
-    if (opts.gpu and !(std.mem.eql(u8, preset.engine, "audio8") or std.mem.eql(u8, preset.engine, "qwen"))) {
-        try stdout.print("error: --gpu is only supported for audio8 and qwen presets (engine is '{s}')\n", .{preset.engine});
-        try stdout.flush();
-        std.process.exit(1);
-    }
+    // Backend comes from the preset alone (cli.resolveBackend) - the
+    // removed --gpu/--cpu flags are rejected in parseOptions above.
+    // Non-audio8/qwen engines ignore it (kokoro/piper have no CUDA switch).
+    const use_gpu = cli.resolveBackend(preset);
 
     if (is_local) {
         timing.logf(stdout, init.io, "[Voice] Loading '{s}' ({s}) standalone...\n", .{ resolved.preset_name, preset.engine });
         var d = try daemon_mod.Daemon.init(arena, init.io, cfg);
-        d.force_cpu = opts.cpu;
-        var result = d.synthesize(arena, preset, resolved.text, stdout, opts.gpu) catch |err| {
+        var result = d.synthesize(arena, preset, resolved.text, stdout, use_gpu) catch |err| {
             try stdout.print("error: synthesis failed ({t})\n", .{err});
             try stdout.flush();
             std.process.exit(1);
@@ -385,9 +385,9 @@ pub fn main(init: std.process.Init) !void {
     var writer = conn.writer(init.io, &write_buf);
     const effects_csv = try std.mem.join(arena, ",", opts.effects.items);
     // schedule is always explicit on the wire (enqueue unless -I/--interrupt);
-    // backend rides along too (cpu default, gpu = audio8/qwen CUDA backend).
+    // backend rides along too, resolved from the preset (no CLI flags for it).
     const schedule: []const u8 = if (opts.interrupt) "interrupt" else "enqueue";
-    const backend: []const u8 = if (opts.gpu) "gpu" else "cpu";
+    const backend: []const u8 = if (use_gpu) "gpu" else "cpu";
     try writer.interface.print("{s}\t{s}\t{s}\t{s}\t{s}\t{s}\n", .{ resolved.preset_name, opts.speaker orelse "", effects_csv, schedule, backend, resolved.text });
     try writer.interface.flush();
     timing.logf(stdout, init.io, "[Client] Request sent, waiting for response...\n", .{});

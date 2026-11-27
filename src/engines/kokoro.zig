@@ -108,7 +108,7 @@ pub const Voice = struct {
         return loadWithProvider(rt, alloc, io, model_path, vocab_path, voices_bin_path, true);
     }
 
-    /// `try_cuda = false` forces CPU (the CLI's `-C/--cpu` flag, "local" only).
+    /// `try_cuda = false` forces CPU (the daemon's force_cpu path).
     pub fn loadWithProvider(rt: *const ort.Runtime, alloc: std.mem.Allocator, io: std.Io, model_path: []const u8, vocab_path: []const u8, voices_bin_path: []const u8, try_cuda: bool) !Voice {
         const voices_bin = try std.Io.Dir.cwd().readFileAlloc(io, voices_bin_path, alloc, .limited(64 << 20));
         return .{

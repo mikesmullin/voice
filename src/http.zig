@@ -5,8 +5,9 @@
 //! std.Io's default threaded backend is safe to share across threads.
 //!
 //! `mode=download` returns WAV bytes (for the browser SPA, milestone 6);
-//! POST /speak also takes an optional "backend" ("cpu" default, "gpu" for
-//! audio8's or qwen's CUDA backend).
+//! the compute backend comes from the preset's own `backend:` ("gpu"
+//! selects the CUDA backend for audio8/qwen) - there is no request-level
+//! override.
 //! `mode=play` (the default) plays through the daemon's own persistent
 //! audio output, same as the unix socket protocol.
 
@@ -141,17 +142,9 @@ fn handleSpeak(daemon: *daemon_mod.Daemon, request: *std.http.Server.Request, io
         .string => |s| if (s.len == 0) null else s,
         else => null,
     } else null;
-    // backend select (mirrors the unix-socket protocol's optional
-    // field): "cpu" (default) or "gpu" (CUDA) for audio8/qwen. Anything else is a 400.
-    const use_gpu: bool = if (obj.get("backend")) |v| switch (v) {
-        .string => |s| blk: {
-            if (std.mem.eql(u8, s, "gpu")) break :blk true;
-            if (std.mem.eql(u8, s, "cpu")) break :blk false;
-            try request.respond("{\"error\":\"backend must be 'cpu' or 'gpu'\"}\n", .{ .status = .bad_request });
-            return;
-        },
-        else => false,
-    } else false;
+    // Backend comes from the preset alone (its `backend:` field) - "gpu"
+    // selects the CUDA backend for audio8/qwen. No request-level override.
+    const use_gpu: bool = if (preset.backend) |b| std.mem.eql(u8, b, "gpu") else false;
     var effect_names: std.ArrayList([]const u8) = .empty;
     if (obj.get("effects")) |v| switch (v) {
         .array => |arr| for (arr.items) |item| if (item == .string) try effect_names.append(alloc, item.string),

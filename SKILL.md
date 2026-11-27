@@ -82,12 +82,15 @@ for the venv (the script tries python3.10 -> python3.13 -> python3; it
 skips broken ones and fails with a clear message if nothing works).
 
 The **Qwen3-TTS** engine (Qwen3-TTS-12Hz-1.7B-Base, zero-shot voice cloning)
-has TWO backends sharing one engine name and one config preset:
-- **CPU** (default): `llama-tts -ngl 0` (Q4_K_M backbone + Q8_0 mmproj),
-  ~1.5GB of weights at /workspace/models/qwen3-tts/ - set up with
-  `./scripts/setup-qwen.sh` (below). No GPU needed.
-- **GPU** (`--gpu`): `llama-tts -ngl 99` (full CUDA offload) - same model
-  files, same speaker WAV; needs an NVIDIA GPU.
+has TWO backends sharing one engine name and one config preset (the preset's
+`backend:` field selects; there are no CLI flags for it):
+- **CPU** (`backend: cpu`): resident `llama-server` with `-ngl 0`
+  (Q4_K_M backbone + Q8_0 mmproj), ~1.5GB of weights at
+  /workspace/models/qwen3-tts/ - set up with `./scripts/setup-qwen.sh`
+  (below). No GPU needed.
+- **GPU** (`backend: gpu`): same sidecar with `-ngl 99` (full CUDA
+  offload) - same model files, same speaker WAV; needs an NVIDIA GPU with
+  ~4GB free (falls back to CPU, loudly logged, when VRAM is short).
 
 ```bash
 ./scripts/setup-qwen.sh   # downloads both gguf files (idempotent)
@@ -95,10 +98,22 @@ has TWO backends sharing one engine name and one config preset:
 
 The voice-clone source (the speaker WAV) is NOT downloaded by the script -
 it's your own recording. Point the preset's `speaker:` field in config.yaml
-at your WAV (e.g. /workspace/models/qwen3-tts/ruth2.wav). Like audio8, the
-engine has no `speed` knob (the upstream CLI exposes none), generates no
-phoneme log, and is not preloadable (each request pays a subprocess spawn +
-model load, ~2-4s CPU).
+at your WAV (e.g. /workspace/models/qwen3-tts/ruth2.wav), plus an optional
+sibling `speaker_text:` transcript (generated once with whisper) that the
+sidecar uses to anchor the clone. Like audio8, the engine has no `speed`
+knob (the upstream CLI exposes none) and generates no phoneme log.
+
+Strategy is sidecar-first: the first qwen request starts a persistent
+`llama-server` (`POST /v1/audio/speech`, port 8081, model resident - the
+clone reference uploads as multipart form bytes, since a JSON
+`speaker_ref` path is silently ignored and yields the default voice).
+Repeat calls pay inference only (~3s warm on CPU vs ~7s one-shot). If the
+sidecar can't start or a request fails, the engine falls back to the
+one-shot `llama-tts` subprocess (same flags, correct voice, slower).
+The sidecar is lazy (never started at `voice serve`, adopted across
+processes via the port) and outlives the daemon - stop it with
+`pkill -f "llama-server.*:8081"` (CPU sidecar: ~6GB RAM, zero VRAM -
+the GPU is hidden from it; a `backend: gpu` sidecar pins ~4GB VRAM).
 
 ## Core Commands
 

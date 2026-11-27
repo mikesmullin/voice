@@ -12,10 +12,6 @@ pub const Options = struct {
     output: ?[]const u8 = null,
     config_path: []const u8 = paths.CONFIG,
     info: ?[]const u8 = null,
-    cpu: bool = false,
-    /// --gpu/-gpu: use the CUDA backend (audio8 and qwen presets only).
-    /// Mutually exclusive with --cpu/-C; default (neither) is CPU.
-    gpu: bool = false,
     stinger: ?[]const u8 = null,
     speaker: ?[]const u8 = null,
     effects: std.ArrayList([]const u8) = .empty,
@@ -51,12 +47,13 @@ pub fn parseOptions(alloc: std.mem.Allocator, args: []const []const u8) !Options
         } else if (eqlAny(a, &.{ "-i", "--info" }) and i + 1 < args.len) {
             i += 1;
             opts.info = args[i];
-        } else if (eqlAny(a, &.{ "--gpu", "-gpu" })) {
-            opts.gpu = true;
+        } else if (eqlAny(a, &.{ "--gpu", "-gpu", "-C", "--cpu", "-cpu" })) {
+            // Removed flags: the preset's own `backend:` is the single
+            // source of truth now. Fail loudly rather than speaking the
+            // flag as text (unknown args fall through to positionals).
+            return error.BackendFlagRemoved;
         } else if (std.mem.startsWith(u8, a, "--info=")) {
             opts.info = a[7..];
-        } else if (eqlAny(a, &.{ "-C", "--cpu", "-cpu" })) {
-            opts.cpu = true;
         } else if (eqlAny(a, &.{ "-s", "--stinger" }) and i + 1 < args.len) {
             i += 1;
             opts.stinger = args[i];
@@ -95,10 +92,15 @@ pub fn parseOptions(alloc: std.mem.Allocator, args: []const []const u8) !Options
 
 pub const Resolved = struct { preset_name: []const u8, text: []const u8 };
 
-/// Resolution rule (section 6): if the first positional matches a
-/// configured preset name, it's the preset and the rest is text;
-/// otherwise every positional is text and default_preset/fallback_voice
-/// (in that order) is used instead.
+/// Backend resolution: the preset's own `backend:` is the single source
+/// of truth ("gpu" = CUDA backend for audio8/qwen, anything else = CPU).
+/// There are no CLI flags for this - the removed --gpu/--cpu flags are
+/// rejected in parseOptions with error.BackendFlagRemoved.
+pub fn resolveBackend(preset: config_mod.VoicePreset) bool {
+    if (preset.backend) |b| return std.mem.eql(u8, b, "gpu");
+    return false;
+}
+
 pub fn resolvePresetAndText(alloc: std.mem.Allocator, cfg: *const config_mod.Config, positionals: []const []const u8) !?Resolved {
     if (positionals.len == 0) return null;
     if (cfg.getPreset(positionals[0]) != null) {
@@ -141,10 +143,6 @@ pub const HELP_TEXT =
     \\    -o, --output <file>   Save audio to WAV instead of playing it (local only, so far)
     \\    -c, --config <file>   Use a custom config.yaml
     \\    -i, --info <preset>   Show preset details
-    \\    -C, --cpu, -cpu      Force CPU usage instead of GPU (Kokoro only; "local" only).
-    \\                          Also selects the CPU backend for audio8/qwen (the default).
-    \\    --gpu, -gpu            Use the CUDA backend (audio8 and qwen presets only).
-    \\                          Mutually exclusive with --cpu/-C.
     \\    -s, --stinger <name>  Play a configured stinger before speech (not yet implemented)
     \\    -d, --speaker <alias> Route audio to a configured speaker alias (see `voice speakers`; Linux only so far)
     \\    -e, --effect <name>   Apply a configured effect preset (repeatable, applied in order given)
@@ -160,9 +158,7 @@ pub const HELP_TEXT =
     \\    voice local -g 1.4 alan "Louder playback"
     \\    voice audio8 "Hello from Audio8."           # shorthand for "client"
     \\    voice local audio8 "Hello from Audio8."  # standalone, no daemon required
-    \\    voice local ruth --gpu "GPU backend."   # standalone, CUDA (audio8 only)
-    \\    voice ruthie "Hello from Qwen3-TTS"    # shorthand for "client"
-    \\    voice local ruthie --gpu "GPU backend." # standalone, CUDA (qwen only)
+    \\    voice ruthie "Hello from Qwen3-TTS"    # shorthand for "client" (ruthie's backend: gpu)
     \\    voice list
     \\    voice speakers
     \\    voice -d headphones lessac "Routed to my headphones alias"
