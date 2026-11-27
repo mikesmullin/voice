@@ -24,6 +24,9 @@ intentionally not finished yet.
   load time (`[onnxruntime] CUDA execution provider ready` or
   `using CPU execution provider`).
 - Piper always runs on CPU (tiny model, already realtime - not worth GPU).
+- Qwen3-TTS runs via the system-installed `llama-tts` binary (subprocess,
+  not in-process) in CPU mode (default) or GPU mode (`--gpu`, full CUDA
+  offload) - see "The Qwen3-TTS engine" below.
 
 ## Fetching models
 
@@ -78,6 +81,25 @@ voice ("default"). Requires `hf` on PATH and a Python 3.10+ interpreter
 for the venv (the script tries python3.10 -> python3.13 -> python3; it
 skips broken ones and fails with a clear message if nothing works).
 
+The **Qwen3-TTS** engine (Qwen3-TTS-12Hz-1.7B-Base, zero-shot voice cloning)
+has TWO backends sharing one engine name and one config preset:
+- **CPU** (default): `llama-tts -ngl 0` (Q4_K_M backbone + Q8_0 mmproj),
+  ~1.5GB of weights at /workspace/models/qwen3-tts/ - set up with
+  `./scripts/setup-qwen.sh` (below). No GPU needed.
+- **GPU** (`--gpu`): `llama-tts -ngl 99` (full CUDA offload) - same model
+  files, same speaker WAV; needs an NVIDIA GPU.
+
+```bash
+./scripts/setup-qwen.sh   # downloads both gguf files (idempotent)
+```
+
+The voice-clone source (the speaker WAV) is NOT downloaded by the script -
+it's your own recording. Point the preset's `speaker:` field in config.yaml
+at your WAV (e.g. /workspace/models/qwen3-tts/ruth2.wav). Like audio8, the
+engine has no `speed` knob (the upstream CLI exposes none), generates no
+phoneme log, and is not preloadable (each request pays a subprocess spawn +
+model load, ~2-4s CPU).
+
 ## Core Commands
 
 ### Direct synthesis (daemon-backed - the fast path)
@@ -101,12 +123,17 @@ voice audio8 "Compact multilingual zero-shot TTS, cloned from the packaged refer
 voice local ruth "Ruth on CPU (default, no flag needed)."
 voice local ruth --gpu "Ruth on CUDA (audio8 presets only)."
 voice ruth --gpu "Same, but via the daemon (needs the daemon running)."
+
+# Qwen3-TTS (two backends, one preset - --cpu default, --gpu for CUDA):
+voice ruthie "Compact cloned voice, CPU default."
+voice local ruthie --gpu "Ruthie on CUDA (qwen presets only)."
+voice ruthie --gpu "Same, but via the daemon (needs the daemon running)."
 ```
 
 `--cpu`/`-C` and `--gpu`/`-gpu` are mutually exclusive (combining them is
-a hard error); `--gpu` with a non-audio8 preset is a hard error too. `-C`
-keeps its old meaning for Kokoro (force CPU); for audio8 it just selects
-the default CPU backend explicitly.
+a hard error); `--gpu` with a non-audio8/non-qwen preset is a hard error too.
+`-C` keeps its old meaning for Kokoro (force CPU); for audio8/qwen it just
+selects the default CPU backend explicitly.
 
 ### Standalone synthesis (no daemon required)
 
@@ -148,11 +175,15 @@ presets; each Piper preset needs its own preload entry). See
 ```
 GET  /health           -> {"status":"ok"}
 GET  /voices            -> [{"name","engine","voice"}, ...] for every preset
-POST /speak              -> body {"text", "voice"?, "mode"?, "gain"?}
+POST /speak              -> body {"text", "voice"?, "mode"?, "gain"?, "speaker"?,
+                                  "effects"?, "schedule"?, "backend"?}
                              mode="play" (default): plays through the
                                daemon's own speakers
                              mode="download": returns WAV bytes (what the
                                browser SPA at GET / uses)
+                             schedule="enqueue"/"interrupt" (required for
+                               mode=play, mirrors the unix-socket protocol)
+                             backend="cpu"/"gpu" - audio8/qwen presets only
 ```
 
 ```bash
@@ -160,9 +191,63 @@ curl -X POST http://127.0.0.1:3124/speak \
   -d '{"text":"Hello","voice":"bella","mode":"download"}' -o out.wav
 ```
 
+```bash
+# Qwen3-TTS (CPU):
+curl -X POST http://127.0.0.1:3124/speak \
+  -d '{"text":"Well, y'"'"'all, this is Ruthie speaking.","voice":"ruthie","mode":"download"}' -o out.wav
+```
+
 The browser SPA (`web/index.html`, served at `GET /`) is a working
 Alpine.js + Tailwind demo page - open `http://127.0.0.1:3124/` once
 `serve --http` is running.
+
+## Background music (random-start background effect)
+
+Any effect preset with a `background:` block plays a track concurrently
+under the voice (the track is read only for the voice's duration - a
+multi-hour track is never loaded whole). Ruthie is wired up to play the
+Old-Time Appalachian Music track under every utterance via config.yaml's
+**preset-default effects**:
+
+```yaml
+voices:
+  ruthie:
+    engine: qwen
+    voice: "Ruth"
+    speaker: "/workspace/models/qwen3-tts/ruth2.wav"
+    effects: [appalachian_background]   # always on, every utterance
+
+effects:
+  appalachian_background:
+    background:
+      volume: 0.27             # gain (0..1+)
+      random_start: true       # pick a random point in the track per call
+      sources:
+        - file: "/home/user/.config/voice/music/old-time-appalachian.ogg"
+```
+
+- `random_start: true` (default `false`): each call starts at a random
+  point in the file (uniform over the track). The track always covers
+  exactly the voice's duration - the window is tiled with wrap-around if
+  the file runs short (short ambience files) - and a long track is never
+  fully loaded into memory (only the needed window is read).
+- `effects: [a, b]` on a preset are **defaults**: they always apply, and
+  request-provided effects (`-e` flag / HTTP `"effects"` field) are
+  appended after them (later wins backgrounds/chains). Duplicates are
+  skipped.
+- The music file lives OUTSIDE the repo (gitignored) at
+  `~/.config/voice/music/` - see that dir's README for why and the fetch
+  recipe. If the file is missing/unreadable, the voice still plays -
+  the music is skipped with a `[Music] skipping ...` log line, not a
+  hard error.
+- Formats supported: PCM 8/16-bit WAV (any rate) and Ogg/Opus
+  (.ogg/.opus/.oga, decoded natively via libopusfile) - either is converted
+  to mono and resampled internally. The long-track slice reader is used for
+  any background, so multi-hour files are fine.
+
+To verify config: `voice --config-test` prints each preset's `effects:`
+list and each effect's `random_start:`; `voice -i ruthie` prints the
+resolved preset.
 
 ## Known gaps (intentional, not oversights)
 
@@ -178,6 +263,16 @@ Alpine.js + Tailwind demo page - open `http://127.0.0.1:3124/` once
   covers Kokoro/Piper presets with persistent sessions) and the `speed`
   config field is ignored for audio8 (no speed knob in either upstream CLI).
   `-C/--cpu` is meaningless for audio8 beyond selecting the default.
+- **Qwen3-TTS is subprocess-backed too** - each `ruthie` (or any `engine:
+  qwen`) request spawns `/usr/bin/llama-tts` (~1.5GB weights, ~2-4s CPU /
+  ~4s GPU) and reads the resulting WAV back - not preloadable, and the
+  `speed` config field is ignored (no speed knob in the upstream CLI).
+  `-C/--cpu` is meaningless for it beyond selecting the default backend.
+  `-ngl 99` is the documented GPU mode but has NOT been verified in this
+  repo (only the CPU path has been) - see "Core Commands" for the current
+  status. The speaker WAV is configured per preset via `speaker:` in
+  config.yaml (required - a missing or unreadable speaker file is a hard
+  error with a clear message, not a silent fallback).
 - **Unix-socket protocol is v2**: `preset\tspeaker\teffects\tschedule\t[backend\t]text`
   (`backend` = `cpu`/`gpu`, audio8 only). The daemon accepts old 5-field
   lines (no backend = CPU); new CLIs always send 6 fields. Same for HTTP

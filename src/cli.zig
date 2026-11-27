@@ -13,7 +13,7 @@ pub const Options = struct {
     config_path: []const u8 = paths.CONFIG,
     info: ?[]const u8 = null,
     cpu: bool = false,
-    /// --gpu/-gpu: use the CUDA backend (audio8 presets only for now).
+    /// --gpu/-gpu: use the CUDA backend (audio8 and qwen presets only).
     /// Mutually exclusive with --cpu/-C; default (neither) is CPU.
     gpu: bool = false,
     stinger: ?[]const u8 = null,
@@ -142,8 +142,8 @@ pub const HELP_TEXT =
     \\    -c, --config <file>   Use a custom config.yaml
     \\    -i, --info <preset>   Show preset details
     \\    -C, --cpu, -cpu      Force CPU usage instead of GPU (Kokoro only; "local" only).
-    \\                          Also selects the CPU backend for audio8 (the default).
-    \\    --gpu, -gpu            Use the CUDA backend (audio8 presets only).
+    \\                          Also selects the CPU backend for audio8/qwen (the default).
+    \\    --gpu, -gpu            Use the CUDA backend (audio8 and qwen presets only).
     \\                          Mutually exclusive with --cpu/-C.
     \\    -s, --stinger <name>  Play a configured stinger before speech (not yet implemented)
     \\    -d, --speaker <alias> Route audio to a configured speaker alias (see `voice speakers`; Linux only so far)
@@ -161,6 +161,8 @@ pub const HELP_TEXT =
     \\    voice audio8 "Hello from Audio8."           # shorthand for "client"
     \\    voice local audio8 "Hello from Audio8."  # standalone, no daemon required
     \\    voice local ruth --gpu "GPU backend."   # standalone, CUDA (audio8 only)
+    \\    voice ruthie "Hello from Qwen3-TTS"    # shorthand for "client"
+    \\    voice local ruthie --gpu "GPU backend." # standalone, CUDA (qwen only)
     \\    voice list
     \\    voice speakers
     \\    voice -d headphones lessac "Routed to my headphones alias"

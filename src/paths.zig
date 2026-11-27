@@ -48,3 +48,19 @@ pub const AUDIO8_TMP_WAV = "/tmp/presence-voice-audio8-";
 pub const AUDIO8_PT_MODEL_DIR = "/workspace/models/audio8-tts-pt";
 pub const AUDIO8_GPU_VENV_PYTHON = "/workspace/models/audio8-gpu/.venv/bin/python";
 pub const AUDIO8_GPU_SYNTH_SCRIPT = ROOT ++ "/scripts/audio8_gpu_synth.py";
+
+// Qwen3-TTS engine (see src/engines/qwen.zig). Weights live outside this
+// repo at /workspace/models/qwen3-tts/ (fetched via `hf download` - see
+// scripts/setup-qwen.sh). Two modes, one preset, selected per request:
+//   - CPU (default): llama-tts with `-ngl 0` (Q4_K_M backbone + Q8_0 mmproj)
+//   - GPU:           `-ngl 99` (full CUDA offload; needs an NVIDIA GPU)
+// The binary is the system-packaged llama.cpp `llama-tts`; it handles the
+// whole text->audio pipeline (tokenization, prompt construction, sampling,
+// vocoder), so Zig never reimplements the Qwen3-TTS stack.
+pub const QWEN_MODEL_DIR = "/workspace/models/qwen3-tts";
+pub const QWEN_BACKBONE = QWEN_MODEL_DIR ++ "/Qwen3-TTS-12Hz-1.7B-Base-Q4_K_M.gguf";
+pub const QWEN_MMPROJ = QWEN_MODEL_DIR ++ "/mmproj-Qwen3-TTS-12Hz-1.7B-Base-Q8_0.gguf";
+/// System-installed llama.cpp binary (pacman/apt: llama.cpp). Not vendored.
+pub const QWEN_LLAMATTS = "/usr/bin/llama-tts";
+/// Temporary WAV written (and unlinked immediately) around each synthesis.
+pub const QWEN_TMP_WAV = "/tmp/presence-voice-qwen-";

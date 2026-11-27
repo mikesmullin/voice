@@ -6,7 +6,7 @@
 //!
 //! `mode=download` returns WAV bytes (for the browser SPA, milestone 6);
 //! POST /speak also takes an optional "backend" ("cpu" default, "gpu" for
-//! audio8's CUDA backend).
+//! audio8's or qwen's CUDA backend).
 //! `mode=play` (the default) plays through the daemon's own persistent
 //! audio output, same as the unix socket protocol.
 
@@ -141,9 +141,9 @@ fn handleSpeak(daemon: *daemon_mod.Daemon, request: *std.http.Server.Request, io
         .string => |s| if (s.len == 0) null else s,
         else => null,
     } else null;
-    // audio8 backend select (mirrors the unix-socket protocol's optional
-    // field): "cpu" (default) or "gpu" (CUDA). Anything else is a 400.
-    const audio8_gpu: bool = if (obj.get("backend")) |v| switch (v) {
+    // backend select (mirrors the unix-socket protocol's optional
+    // field): "cpu" (default) or "gpu" (CUDA) for audio8/qwen. Anything else is a 400.
+    const use_gpu: bool = if (obj.get("backend")) |v| switch (v) {
         .string => |s| blk: {
             if (std.mem.eql(u8, s, "gpu")) break :blk true;
             if (std.mem.eql(u8, s, "cpu")) break :blk false;
@@ -160,12 +160,20 @@ fn handleSpeak(daemon: *daemon_mod.Daemon, request: *std.http.Server.Request, io
 
     if (std.mem.eql(u8, mode, "download")) {
         const t0 = timing.elapsedSeconds(io);
-        var result = daemon.synthesize(alloc, preset, text, log, audio8_gpu) catch |err| {
+        var result = daemon.synthesize(alloc, preset, text, log, use_gpu) catch |err| {
             timing.logf(log, io, "[HTTP] synth error: {t}\n", .{err});
+            if (err == error.SpeakerNotConfigured) {
+                try request.respond("{\"error\":\"qwen preset is missing a speaker file (see config.yaml's speaker: field)\"}\n", .{ .status = .bad_request });
+                return;
+            }
             try request.respond("{\"error\":\"synthesis failed\"}\n", .{ .status = .internal_server_error });
             return;
         };
-        const resolved = effects.resolveEffects(alloc, &daemon.config, effect_names.items) catch {
+        const effective_fx = effects.effectiveEffects(alloc, preset, effect_names.items) catch {
+            try request.respond("{\"error\":\"unknown effect (see config.yaml's effects: block)\"}\n", .{ .status = .bad_request });
+            return;
+        };
+        const resolved = effects.resolveEffects(alloc, io, &daemon.config, effective_fx) catch {
             try request.respond("{\"error\":\"unknown effect (see config.yaml's effects: block)\"}\n", .{ .status = .bad_request });
             return;
         };
@@ -197,13 +205,17 @@ fn handleSpeak(daemon: *daemon_mod.Daemon, request: *std.http.Server.Request, io
     if (interrupt) daemon.output.stopSpeech();
 
     const t0 = timing.elapsedSeconds(io);
-    const n = daemon.synthesizeAndPlay(preset, text, true, log, speaker, effect_names.items, audio8_gpu) catch |err| {
+    const n = daemon.synthesizeAndPlay(preset, text, true, log, speaker, effect_names.items, use_gpu) catch |err| {
         if (err == error.UnknownSpeaker) {
             try request.respond("{\"error\":\"unknown speaker (see 'voice speakers')\"}\n", .{ .status = .bad_request });
             return;
         }
         if (err == error.UnknownEffect) {
             try request.respond("{\"error\":\"unknown effect (see config.yaml's effects: block)\"}\n", .{ .status = .bad_request });
+            return;
+        }
+        if (err == error.SpeakerNotConfigured) {
+            try request.respond("{\"error\":\"qwen preset is missing a speaker file (see config.yaml's speaker: field)\"}\n", .{ .status = .bad_request });
             return;
         }
         timing.logf(log, io, "[HTTP] synth error: {t}\n", .{err});

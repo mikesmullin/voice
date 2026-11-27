@@ -1,6 +1,6 @@
 # 🗣️ voice
 
-Always-on local text-to-speech CLI + daemon (Piper + Kokoro + Audio8 CPU/GPU), written in
+Always-on local text-to-speech CLI + daemon (Piper + Kokoro + Audio8 + Qwen3-TTS, CPU/GPU), written in
 Zig + ONNX Runtime. CLI, unix socket, HTTP API, and a browser SPA all
 talk to the same running process (the `presence-voice` systemd service,
 see `presence-voice.service`).
@@ -67,18 +67,30 @@ To run the daemon (recommended - see `presence-voice.service` for systemd
 curl http://127.0.0.1:3124/health
 ```
 
+## Features (beyond the four engines)
+
+- **Background music effect** - per-preset default effects (`effects: [name]`
+  in config.yaml) play a track concurrently under the voice, starting at a
+  random point in the file (`random_start: true`), at a configured gain
+  (the track's own slice is read per call - multi-hour tracks never fully
+  load). Wired up to Ruthie via `appalachian_background`. See SKILL.md's
+  "Background music" section.
+- DSP effect chains (distortion, bandpass, lowpass, delay, compressor, ...),
+  stingers, and looped background ambience (existing `background:` block).
+
 ## Status
 
-Working end-to-end: both engines synthesize real audio via ONNX Runtime
-(Kokoro on GPU when available, falling back to CPU; Piper always CPU),
-`local`/`client`/`list`/`serve --http` all function, the HTTP API and
-browser SPA work, systemd unit drafted. See `SKILL.md`'s "Known gaps" for
+Working end-to-end: all four engines synthesize real audio
+(Kokoro on GPU when available, falling back to CPU; Piper always CPU;
+Audio8 + Qwen3-TTS subprocess-backed with CPU/GPU backends each),
+`local`/`client`/`list`/`speakers`/`serve --http` all function, the HTTP API
+and browser SPA work, systemd unit drafted. See `SKILL.md`'s "Known gaps" for
 what's intentionally unfinished (per-request gain/output over the daemon
 protocol, stingers, hardcoded model paths).
 
 ## Documentation
 
-- `SKILL.md` - operator guide (commands, HTTP API, known gaps, toolchain notes, Audio8 setup)
+- `SKILL.md` - operator guide (commands, HTTP API, known gaps, toolchain notes, Audio8 + Qwen3-TTS setup)
 - `tmp/PHASE3_PLAN.md` - full design rationale and decisions log
 - `presence-voice.service` - systemd --user unit
 

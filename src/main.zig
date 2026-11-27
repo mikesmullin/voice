@@ -102,7 +102,16 @@ pub fn main(init: std.process.Init) !void {
                 try stdout.print("  ... ({d} more)\n", .{cfg.voices.count() - 10});
                 break;
             }
-            try stdout.print("  {s}: engine={s} voice={s} speed={d}\n", .{ kv.key_ptr.*, kv.value_ptr.engine, kv.value_ptr.voice, kv.value_ptr.speed });
+            try stdout.print("  {s}: engine={s} voice={s} speed={d}", .{ kv.key_ptr.*, kv.value_ptr.engine, kv.value_ptr.voice, kv.value_ptr.speed });
+            if (kv.value_ptr.effects.items.len > 0) {
+                try stdout.print(" effects=[", .{});
+                for (kv.value_ptr.effects.items, 0..) |e, i| {
+                    if (i > 0) try stdout.print(", ", .{});
+                    try stdout.print("{s}", .{e});
+                }
+                try stdout.print("]", .{});
+            }
+            try stdout.print("\n", .{});
         }
         try stdout.print("speakers ({d}):\n", .{cfg.speakers.count()});
         var speaker_it = cfg.speakers.iterator();
@@ -117,7 +126,7 @@ pub fn main(init: std.process.Init) !void {
                 while (param_it.next()) |p| try stdout.print("        {s}: {s}\n", .{ p.key_ptr.*, p.value_ptr.* });
             }
             if (kv.value_ptr.background.sources.items.len > 0) {
-                try stdout.print("    background: volume={d}\n", .{kv.value_ptr.background.volume});
+                try stdout.print("    background: volume={d} random_start={s}\n", .{ kv.value_ptr.background.volume, if (kv.value_ptr.background.random_start) "true" else "false" });
                 for (kv.value_ptr.background.sources.items) |src| try stdout.print("      - {s}\n", .{src});
             }
         }
@@ -265,6 +274,15 @@ pub fn main(init: std.process.Init) !void {
             std.process.exit(1);
         };
         try stdout.print("Preset:  {s}\nEngine:  {s}\nVoice:   {s}\nSpeed:   {d}\n", .{ preset_name, preset.engine, preset.voice, preset.speed });
+        if (preset.speaker) |spk| try stdout.print("Speaker: {s}\n", .{spk});
+        if (preset.effects.items.len > 0) {
+            try stdout.print("Effects: [", .{});
+            for (preset.effects.items, 0..) |e, i| {
+                if (i > 0) try stdout.print(", ", .{});
+                try stdout.print("{s}", .{e});
+            }
+            try stdout.print("]\n", .{});
+        }
         try stdout.flush();
         return;
     }
@@ -280,8 +298,8 @@ pub fn main(init: std.process.Init) !void {
         std.process.exit(1);
     };
 
-    if (opts.gpu and !std.mem.eql(u8, preset.engine, "audio8")) {
-        try stdout.print("error: --gpu is only supported for audio8 presets (engine is '{s}')\n", .{preset.engine});
+    if (opts.gpu and !(std.mem.eql(u8, preset.engine, "audio8") or std.mem.eql(u8, preset.engine, "qwen"))) {
+        try stdout.print("error: --gpu is only supported for audio8 and qwen presets (engine is '{s}')\n", .{preset.engine});
         try stdout.flush();
         std.process.exit(1);
     }
@@ -290,10 +308,19 @@ pub fn main(init: std.process.Init) !void {
         timing.logf(stdout, init.io, "[Voice] Loading '{s}' ({s}) standalone...\n", .{ resolved.preset_name, preset.engine });
         var d = try daemon_mod.Daemon.init(arena, init.io, cfg);
         d.force_cpu = opts.cpu;
-        var result = try d.synthesize(arena, preset, resolved.text, stdout, opts.gpu);
+        var result = d.synthesize(arena, preset, resolved.text, stdout, opts.gpu) catch |err| {
+            try stdout.print("error: synthesis failed ({t})\n", .{err});
+            try stdout.flush();
+            std.process.exit(1);
+        };
         cli.applyGain(result.samples, opts.gain);
 
-        const resolved_fx = effects_mod.resolveEffects(arena, &cfg, opts.effects.items) catch {
+        const effective_fx_list = effects_mod.effectiveEffects(arena, preset, opts.effects.items) catch {
+            try stdout.print("error: unknown effect (see config.yaml's effects: block)\n", .{});
+            try stdout.flush();
+            std.process.exit(1);
+        };
+        const resolved_fx = effects_mod.resolveEffects(arena, init.io, &cfg, effective_fx_list) catch {
             try stdout.print("error: unknown effect (see config.yaml's effects: block)\n", .{});
             try stdout.flush();
             std.process.exit(1);
@@ -325,7 +352,7 @@ pub fn main(init: std.process.Init) !void {
         } else {
             var out = audio_output.Output.init(arena);
             if (resolved_fx.stinger_files.items.len > 0 or resolved_fx.background != null) {
-                try out.playChain(arena, init.io, result.samples, result.sample_rate, resolved_fx.stinger_files.items, resolved_fx.background);
+                try out.playChain(arena, init.io, result.samples, result.sample_rate, resolved_fx.stinger_files.items, resolved_fx.background, stdout);
             } else {
                 try out.play(result.samples, result.sample_rate);
             }
@@ -358,7 +385,7 @@ pub fn main(init: std.process.Init) !void {
     var writer = conn.writer(init.io, &write_buf);
     const effects_csv = try std.mem.join(arena, ",", opts.effects.items);
     // schedule is always explicit on the wire (enqueue unless -I/--interrupt);
-    // backend rides along too (cpu default, gpu = audio8's CUDA backend).
+    // backend rides along too (cpu default, gpu = audio8/qwen CUDA backend).
     const schedule: []const u8 = if (opts.interrupt) "interrupt" else "enqueue";
     const backend: []const u8 = if (opts.gpu) "gpu" else "cpu";
     try writer.interface.print("{s}\t{s}\t{s}\t{s}\t{s}\t{s}\n", .{ resolved.preset_name, opts.speaker orelse "", effects_csv, schedule, backend, resolved.text });

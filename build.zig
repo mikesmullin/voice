@@ -45,6 +45,12 @@ pub fn build(b: *std.Build) void {
     exe_mod.linkSystemLibrary("onnxruntime", .{});
     exe_mod.addRPath(b.path("vendor/onnxruntime/lib"));
 
+    // Ogg/Opus music playback (src/audio/opus.zig) - the system libopusfile
+    // (and its libopus/libogg/libvorbis deps), linked the same way as the
+    // other system libraries. Hand-declared externs in opus.zig - no
+    // translated C module.
+    exe_mod.linkSystemLibrary("opusfile", .{});
+
     // Persistent audio output (section 4/8 of the original plan, migrated
     // to sokol_audio per tmp/FUN_PLAN.md section 2's "Prerequisite" -
     // restores the cross-platform portability v1 (Python/PortAudio) had,

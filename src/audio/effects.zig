@@ -29,7 +29,29 @@ pub const ResolvedChain = struct {
 pub const BackgroundChoice = struct {
     path: []const u8,
     volume: f32,
+    /// When true, playback starts at a random point into the file instead
+    /// of the beginning (the file is read via the slice reader in
+    /// `audiofile.zig` - WAV or Ogg/Opus, so multi-hour tracks are never
+    /// fully loaded).
+    random_start: bool = false,
 };
+
+/// Combines a preset's declared default effect names with request-provided
+/// ones: preset first (always applied), then request-provided (later wins
+/// backgrounds / chains). Request names that the preset already declared
+/// are skipped (would double-apply).
+pub fn effectiveEffects(alloc: std.mem.Allocator, preset: config_mod.VoicePreset, request_effects: []const []const u8) ![][]const u8 {
+    var list: std.ArrayList([]const u8) = .empty;
+    for (preset.effects.items) |name| try list.append(alloc, name);
+    for (request_effects) |name| {
+        var dup = false;
+        for (list.items) |e| {
+            if (std.mem.eql(u8, e, name)) { dup = true; break; }
+        }
+        if (!dup) try list.append(alloc, name);
+    }
+    return list.toOwnedSlice(alloc);
+}
 
 pub const ResolveError = error{UnknownEffect};
 
@@ -37,7 +59,7 @@ pub const ResolveError = error{UnknownEffect};
 /// (per tmp/FUN_PLAN.md section 2: "chain steps run top-to-bottom within
 /// each named preset" and presets themselves apply in the order listed
 /// on the command line/request).
-pub fn resolveEffects(alloc: std.mem.Allocator, cfg: *const config_mod.Config, effect_names: []const []const u8) !ResolvedChain {
+pub fn resolveEffects(alloc: std.mem.Allocator, io: std.Io, cfg: *const config_mod.Config, effect_names: []const []const u8) !ResolvedChain {
     var result: ResolvedChain = .{};
     for (effect_names) |name| {
         const preset = cfg.getEffect(name) orelse return ResolveError.UnknownEffect;
@@ -55,12 +77,10 @@ pub fn resolveEffects(alloc: std.mem.Allocator, cfg: *const config_mod.Config, e
             }
         }
         if (preset.background.sources.items.len > 0) {
-            // A fresh seed per process (ASLR-derived stack address) is
-            // plenty for "pick a random ambience clip" - not meant to be
-            // cryptographically random, and each CLI invocation is its
-            // own process anyway.
+            // Fresh entropy per call - the daemon reuses stack frames
+            // across requests, so a stack-address seed would not vary there.
             var seed: u64 = undefined;
-            seed = @intCast(@intFromPtr(&seed));
+            std.Io.random(io, std.mem.asBytes(&seed));
             var prng = std.Random.DefaultPrng.init(seed);
             const idx = prng.random().intRangeAtMost(usize, 0, preset.background.sources.items.len - 1);
             const file = preset.background.sources.items[idx];
@@ -68,7 +88,7 @@ pub fn resolveEffects(alloc: std.mem.Allocator, cfg: *const config_mod.Config, e
                 file
             else
                 try std.fmt.allocPrint(alloc, "{s}/{s}", .{ paths_mod.ROOT, file });
-            result.background = .{ .path = abs, .volume = preset.background.volume };
+            result.background = .{ .path = abs, .volume = preset.background.volume, .random_start = preset.background.random_start };
         }
     }
     return result;

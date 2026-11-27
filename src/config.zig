@@ -36,6 +36,16 @@ pub const VoicePreset = struct {
     /// the system message, and speaks the *response* instead. `null`
     /// (the default) means no rewrite, no added latency - opt-in only.
     personality_prompt: ?[]const u8 = null,
+    /// Voice-clone source for engines that need one (qwen: the speaker
+    /// WAV that gets cloned, a path). `null` (the default) means the
+    /// engine doesn't use it (kokoro/piper/audio8 use `voice` as their
+    /// voice id instead).
+    speaker: ?[]const u8 = null,
+    /// Default effect presets applied to every utterance from this preset
+    /// (config.yaml `effects: [name1, name2]` - inline list). Request-
+    /// provided `-e`/HTTP effects are appended after these (applied in
+    /// order; later effects win backgrounds/chains).
+    effects: std.ArrayList([]const u8) = .empty,
 };
 
 /// One step in an effect preset's `chain:` (tmp/FUN_PLAN.md section 2),
@@ -61,6 +71,10 @@ pub const EffectPreset = struct {
 pub const Background = struct {
     volume: f32 = 0.25,
     sources: std.ArrayList([]const u8) = .empty,
+    /// When true, playback starts at a random point into the file instead
+    /// of at the beginning (off on by default - the same music start every
+    /// time is usually not what you want).
+    random_start: bool = false,
 };
 
 pub const Config = struct {
@@ -198,6 +212,10 @@ pub const Config = struct {
                                 current_voice.speed = std.fmt.parseFloat(f32, unquote(kv.value)) catch 1.0;
                             } else if (std.mem.eql(u8, kv.key, "personality_prompt")) {
                                 current_voice.personality_prompt = try alloc.dupe(u8, unquote(kv.value));
+                            } else if (std.mem.eql(u8, kv.key, "speaker")) {
+                                current_voice.speaker = try alloc.dupe(u8, unquote(kv.value));
+                            } else if (std.mem.eql(u8, kv.key, "effects")) {
+                                try parseInlineList(alloc, kv.value, &current_voice.effects);
                             }
                         }
                     }
@@ -305,6 +323,8 @@ pub const Config = struct {
                                     if (parseKeyValue(content)) |kv| {
                                         if (std.mem.eql(u8, kv.key, "volume")) {
                                             current_effect.background.volume = std.fmt.parseFloat(f32, unquote(kv.value)) catch 0.25;
+                                        } else if (std.mem.eql(u8, kv.key, "random_start")) {
+                                            current_effect.background.random_start = std.mem.eql(u8, unquote(kv.value), "true") or std.mem.eql(u8, unquote(kv.value), "yes");
                                         }
                                     } else if (parseBlockKey(content)) |key| {
                                         bg_in_sources = std.mem.eql(u8, key, "sources");
@@ -400,6 +420,19 @@ fn parseBlockKey(content: []const u8) ?[]const u8 {
     const key = std.mem.trim(u8, content[0 .. content.len - 1], " \t");
     if (!isIdentifier(key)) return null;
     return key;
+}
+
+/// Parses an inline comma-separated list from a `key: [a, b]` value
+/// (the only list syntax the config parser handles).
+fn parseInlineList(alloc: std.mem.Allocator, raw: []const u8, out: *std.ArrayList([]const u8)) !void {
+    var s = std.mem.trim(u8, raw, " \t\"");
+    if (s.len >= 2 and s[0] == '[' and s[s.len - 1] == ']') s = s[1 .. s.len - 1];
+    var it = std.mem.splitScalar(u8, s, ',');
+    while (it.next()) |item| {
+        const i = unquote(std.mem.trim(u8, item, " \t"));
+        if (i.len == 0) continue;
+        try out.append(alloc, try alloc.dupe(u8, i));
+    }
 }
 
 fn isIdentifier(s: []const u8) bool {

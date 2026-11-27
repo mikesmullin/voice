@@ -50,6 +50,21 @@ effects:
       sources:
         - file: "sfx/error.wav"
 
+  appalachian_background:
+    # Old-Time Appalachian Music for Focus & Background (~2h) - played under
+    # Ruthie's vocalizations. random_start: each utterance picks a random
+    # point in the track; the music is read only for the voice's duration
+    # (the full track is never loaded). Source lives OUTSIDE the repo (not
+    # committed): ~/.config/voice/music/old-time-appalachian.ogg - see
+    # SKILL.md for how to fetch it. Ogg/Opus is read natively by the voice
+    # server (libopusfile) - no WAV conversion needed. Set a specific gain
+    # with volume:.
+    background:
+      volume: 0.27
+      random_start: true
+      sources:
+        - file: "/home/user/.config/voice/music/old-time-appalachian.ogg"
+
   clean_narration:
     chain:
       - compressor:
@@ -85,6 +100,25 @@ voices:
     engine: audio8
     voice: "Ruth"
     speed: 1.0
+
+
+  # ==========================================================================
+  # QWEN VOICES (Qwen3-TTS - zero-shot voice cloning via llama.cpp llama-tts)
+  # ==========================================================================
+  # Qwen3-TTS-12Hz-1.7B-Base (Q4_K_M backbone + Q8_0 mmproj) from
+  # ggml-org/Qwen3-TTS-12Hz-1.7B-Base-GGUF, ~1.5GB of weights at
+  # /workspace/models/qwen3-tts/ (fetch via ./scripts/setup-qwen.sh).
+  # Two backends sharing one preset: --cpu (default) = pure CPU
+  # (`llama-tts -ngl 0`); --gpu = full CUDA offload (`-ngl 99`, needs an
+  # NVIDIA GPU). The voice-clone source is the `speaker:` field (a WAV
+  # path, absolute); the engine ignores per-preset `speed` (no speed knob
+  # in the upstream CLI).
+
+  ruthie:
+    engine: qwen
+    voice: "Ruth"
+    speaker: "/workspace/models/qwen3-tts/ruth2.wav"
+    effects: [appalachian_background]
 
   # ==========================================================================
   # KOKORO VOICES (GPU-accelerated, highest quality)

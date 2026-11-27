@@ -32,8 +32,8 @@ const saudio = sokol.audio;
 const world_mod = @import("world.zig");
 const feature_tap = @import("feature_tap.zig");
 const resample = @import("resample.zig").resample;
-const wav_mod = @import("wav.zig");
 const effects_mod = @import("effects.zig");
+const audiofile = @import("audiofile.zig");
 
 /// Matches Kokoro's native rate (tmp/FUN_PLAN.md section 2) - only Piper
 /// voices at other rates ever actually get resampled by `play()`.
@@ -106,15 +106,18 @@ pub const Output = struct {
     /// exactly the stinger+voice's combined length rather than looping
     /// forever, so a background ambience can't outlive its request (this
     /// matters for the long-running daemon: a real infinite loop would
-    /// never stop once started).
-    pub fn playChain(self: *Output, alloc: std.mem.Allocator, io: std.Io, samples: []const f32, rate: u32, stinger_paths: []const []const u8, background: ?effects_mod.BackgroundChoice) !void {
+    /// never stop once started). When `random_start` is set, the track
+    /// is read from a random point (via the slice reader, so multi-hour
+    /// tracks never fully load) instead of from the beginning. Ogg/Opus
+    /// tracks are decoded straight through libopusfile - no WAV conversion.
+    pub fn playChain(self: *Output, alloc: std.mem.Allocator, io: std.Io, samples: []const f32, rate: u32, stinger_paths: []const []const u8, background: ?effects_mod.BackgroundChoice, log: ?*std.Io.Writer) !void {
         _ = self;
         // stingers + voice share the speech channel too: a stinger blocks
         // its voice AND queues behind any speech already playing
         var channel: ?usize = SPEECH_CHANNEL;
         var total_frames: usize = 0;
         for (stinger_paths) |path| {
-            const wav_data = wav_mod.readMono(alloc, io, path) catch continue;
+            const wav_data = audiofile.readMono(alloc, io, path) catch continue;
             const resampled = resample(std.heap.c_allocator, wav_data.samples, wav_data.sample_rate, g_world.mix_rate) catch continue;
             total_frames += resampled.len;
             channel = try g_world.enqueue(channel, .{ .samples = resampled });
@@ -124,8 +127,41 @@ pub const Output = struct {
         _ = try g_world.enqueue(channel, .{ .samples = voice_resampled });
 
         if (background) |bg| {
-            const wav_data = wav_mod.readMono(alloc, io, bg.path) catch return;
-            const bg_resampled = resample(alloc, wav_data.samples, wav_data.sample_rate, g_world.mix_rate) catch return;
+            // Read only the window needed for this request - the file may
+            // be far longer than the voice (a multi-hour music track), so
+            // it is never loaded whole (the slice reader in audiofile.zig -
+            // WAV or Ogg/Opus, picked by extension).
+            const hdr = audiofile.readHeader(alloc, io, bg.path) catch {
+                if (log) |l| l.print("[Music] skipping {s} (not found or unreadable)\n", .{bg.path}) catch {};
+                return;
+            };
+            const mix_rate = g_world.mix_rate;
+            const need_file_frames: usize = @intFromFloat(@ceil(@as(f64, @floatFromInt(total_frames)) * @as(f64, @floatFromInt(hdr.sample_rate)) / @as(f64, @floatFromInt(mix_rate))));
+            var offset: usize = 0;
+            if (bg.random_start and hdr.total_frames > 0) {
+                // A fresh CSPRNG seed per call - "pick a random starting
+                // point" (same pattern as effects.zig's random source
+                // selection, but actually varying inside the daemon).
+                const total: usize = @intCast(hdr.total_frames);
+                // Fresh entropy per call, not a stack address - the daemon
+                // reuses stack frames across requests, so @intFromPtr would
+                // not vary there either.
+                var seed: u64 = undefined;
+                std.Io.random(io, std.mem.asBytes(&seed));
+                var prng = std.Random.DefaultPrng.init(seed);
+                offset = prng.random().intRangeAtMost(usize, 0, total - 1);
+            }
+            const wav_data = audiofile.readSlice(alloc, io, bg.path, offset, need_file_frames) catch {
+                if (log) |l| l.print("[Music] skipping {s} (slice read failed)\n", .{bg.path}) catch {};
+                return;
+            };
+            if (log) |l| {
+                l.print("[Music] {s} (offset {d:.1}s, gain {d:.2})\n", .{ bg.path, @as(f64, @floatFromInt(offset)) / @as(f64, @floatFromInt(hdr.sample_rate)), bg.volume }) catch {};
+            }
+            const bg_resampled = resample(alloc, wav_data.samples, wav_data.sample_rate, g_world.mix_rate) catch {
+                if (log) |l| l.print("[Music] skipping {s} (resample failed)\n", .{bg.path}) catch {};
+                return;
+            };
             const tiled = try std.heap.c_allocator.alloc(f32, total_frames);
             if (bg_resampled.len == 0) {
                 @memset(tiled, 0);

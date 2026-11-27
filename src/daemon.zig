@@ -19,6 +19,7 @@ const config_mod = @import("config.zig");
 const kokoro = @import("engines/kokoro.zig");
 const piper = @import("engines/piper.zig");
 const audio8 = @import("engines/audio8.zig");
+const qwen = @import("engines/qwen.zig");
 const ort = @import("engines/onnxruntime.zig");
 const audio_output = @import("audio/output.zig");
 const feature_tap = @import("audio/feature_tap.zig");
@@ -128,7 +129,7 @@ pub const Daemon = struct {
     ///   - "synthesize done": the ONNX Run() call returned every sample at
     ///     once (Piper/Kokoro aren't streaming inference) - "time to last
     ///     byte", i.e. the actual engine/neural-net compute time.
-    pub fn synthesize(self: *Daemon, alloc: std.mem.Allocator, preset: config_mod.VoicePreset, text: []const u8, log: ?*std.Io.Writer, audio8_gpu: bool) !SynthResult {
+    pub fn synthesize(self: *Daemon, alloc: std.mem.Allocator, preset: config_mod.VoicePreset, text: []const u8, log: ?*std.Io.Writer, use_gpu: bool) !SynthResult {
         const t0 = timing.elapsedSeconds(self.io);
 
         // Personality prompt (tmp/FUN_PLAN.md section 4): rewrite `text`
@@ -157,10 +158,24 @@ pub const Daemon = struct {
             // CPU = official INT8 ONNX runtime; GPU = full-precision
             // PyTorch checkpoint on CUDA (both read the same registered
             // voice - codes.npy + reference_text out of voices/<name>/).
-            const audio = if (audio8_gpu)
+            const audio = if (use_gpu)
                 try audio8.synthesizeGpu(alloc, self.io, actual_text, preset.voice, log)
             else
                 try audio8.synthesize(alloc, self.io, actual_text, preset.voice, log);
+            if (log) |l| timing.logf(l, self.io, "[Engine] synthesize done ({d:.3}s)\n", .{timing.elapsedSeconds(self.io) - t0});
+            return .{ .samples = audio.samples, .sample_rate = audio.sample_rate };
+        } else if (std.mem.eql(u8, preset.engine, "qwen")) {
+            // Qwen3-TTS: subprocess-driven via llama-tts (Qwen3-TTS-12Hz-1.7B-Base).
+            // Like audio8 there is no G2P/phoneme step (the model's tokenizer
+            // handles text -> codes) and no `speed` knob (the upstream CLI
+            // has none) - both are ignored for this engine too.
+            // The speaker WAV (the voice-clone reference) comes from the
+            // preset's `speaker:` field - required, not optional.
+            const speaker = preset.speaker orelse return error.SpeakerNotConfigured;
+            const audio = if (use_gpu)
+                try qwen.synthesizeGpu(alloc, self.io, actual_text, speaker, log)
+            else
+                try qwen.synthesize(alloc, self.io, actual_text, speaker, log);
             if (log) |l| timing.logf(l, self.io, "[Engine] synthesize done ({d:.3}s)\n", .{timing.elapsedSeconds(self.io) - t0});
             return .{ .samples = audio.samples, .sample_rate = audio.sample_rate };
         } else if (std.mem.eql(u8, preset.engine, "kokoro")) {
@@ -213,7 +228,7 @@ pub const Daemon = struct {
     /// the explicit-speaker path - stingers need the World's channel
     /// queue, which `linux_sink` bypasses; a known, documented gap, not a
     /// silent one).
-    pub fn synthesizeAndPlay(self: *Daemon, preset: config_mod.VoicePreset, text: []const u8, play: bool, log: ?*std.Io.Writer, speaker_alias: ?[]const u8, effect_names: []const []const u8, audio8_gpu: bool) !usize {
+    pub fn synthesizeAndPlay(self: *Daemon, preset: config_mod.VoicePreset, text: []const u8, play: bool, log: ?*std.Io.Writer, speaker_alias: ?[]const u8, effect_names: []const []const u8, use_gpu: bool) !usize {
         const sink: ?[]const u8 = if (speaker_alias) |alias|
             self.config.getSpeakerSink(alias) orelse return error.UnknownSpeaker
         else
@@ -223,9 +238,12 @@ pub const Daemon = struct {
         defer frame_arena.deinit();
         const alloc = frame_arena.allocator();
 
-        const resolved = try effects.resolveEffects(alloc, &self.config, effect_names);
+        // Preset-declared default effects always apply, then request-
+        // provided ones (later wins backgrounds/chains).
+        const effective_names = try effects.effectiveEffects(alloc, preset, effect_names);
+        const resolved = try effects.resolveEffects(alloc, self.io, &self.config, effective_names);
 
-        var result = try self.synthesize(alloc, preset, text, log, audio8_gpu);
+        var result = try self.synthesize(alloc, preset, text, log, use_gpu);
         if (resolved.chain.items.len > 0) {
             result.samples = try effects.applyChain(alloc, result.samples, result.sample_rate, resolved.chain.items);
         }
@@ -235,7 +253,7 @@ pub const Daemon = struct {
             if (sink) |sink_name| {
                 try linux_sink.playToSink(self.allocator, result.samples, result.sample_rate, sink_name);
             } else if (resolved.stinger_files.items.len > 0 or resolved.background != null) {
-                try self.output.playChain(alloc, self.io, result.samples, result.sample_rate, resolved.stinger_files.items, resolved.background);
+                try self.output.playChain(alloc, self.io, result.samples, result.sample_rate, resolved.stinger_files.items, resolved.background, log);
             } else {
                 try self.output.play(result.samples, result.sample_rate);
             }
@@ -246,7 +264,7 @@ pub const Daemon = struct {
     /// Single-threaded blocking accept loop on a unix socket. Protocol: one
     /// line per request,
     /// `preset<TAB>speaker<TAB>effects<TAB>schedule<TAB>[backend<TAB>]text\n`
-    /// (`backend` is `cpu` (default) or `gpu` - audio8's CUDA backend.
+    /// (`backend` is `cpu` (default) or `gpu` - audio8's/qwen's CUDA backend.
     /// Older 5-field clients omit it and get CPU.)
     /// (`speaker` empty = default sink; `effects` empty = none, otherwise
     /// comma-separated effect preset names); replies `OK\n` or
@@ -332,8 +350,8 @@ pub const Daemon = struct {
             return .close;
         };
         const schedule_field = rest3[0..tab4];
-        // Optional 6th field: audio8 backend ("cpu" default, "gpu" selects
-        // the CUDA backend). Old 5-field clients send no tab5 and get CPU.
+        // Optional 6th field: backend ("cpu" default, "gpu" selects the
+        // CUDA backend for audio8/qwen). Old 5-field clients send no tab5 and get CPU.
         // (Backend travels in-band because the daemon holds no per-request
         // state - one persistent process serves both backends.)
         var backend_field: []const u8 = "cpu";
@@ -342,8 +360,8 @@ pub const Daemon = struct {
             backend_field = text[0..tab5];
             text = text[tab5 + 1 ..];
         }
-        const audio8_gpu = std.mem.eql(u8, backend_field, "gpu");
-        if (!audio8_gpu and !std.mem.eql(u8, backend_field, "cpu")) {
+        const use_gpu = std.mem.eql(u8, backend_field, "gpu");
+        if (!use_gpu and !std.mem.eql(u8, backend_field, "cpu")) {
             try writeResponse(conn, self.io, "ERR backend must be 'cpu' or 'gpu'\n");
             return .close;
         }
@@ -383,13 +401,17 @@ pub const Daemon = struct {
         }
 
         const t0 = timing.elapsedSeconds(self.io);
-        const n = self.synthesizeAndPlay(preset, text, true, log, if (speaker_alias.len == 0) null else speaker_alias, effect_names.items, audio8_gpu) catch |err| {
+        const n = self.synthesizeAndPlay(preset, text, true, log, if (speaker_alias.len == 0) null else speaker_alias, effect_names.items, use_gpu) catch |err| {
             if (err == error.UnknownSpeaker) {
                 try writeResponse(conn, self.io, "ERR unknown speaker (see 'voice speakers')\n");
                 return .close;
             }
             if (err == error.UnknownEffect) {
                 try writeResponse(conn, self.io, "ERR unknown effect (see config.yaml's effects: block)\n");
+                return .close;
+            }
+            if (err == error.SpeakerNotConfigured) {
+                try writeResponse(conn, self.io, "ERR qwen preset is missing a speaker file (see config.yaml's speaker: field)\n");
                 return .close;
             }
             return err;
